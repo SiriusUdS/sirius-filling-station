@@ -24,7 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
-#include "Engine.h"
+#include "FillingStation.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,15 +55,15 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-GPIO gpios[ENGINE_GPIO_AMOUNT]        = {0};
-ADC12 adc                             = {0};
-PWM pwms[ENGINE_PWM_AMOUNT]           = {0};
-UART uart                             = {0};
-volatile USB usb                      = {0};
+GPIO gpios[FILLING_STATION_GPIO_AMOUNT] = {0};
+ADC12 adc                               = {0};
+PWM pwms[FILLING_STATION_PWM_AMOUNT]    = {0};
+UART uart                               = {0};
+volatile USB usb                        = {0};
 
-Valve valves[ENGINE_VALVE_AMOUNT]                                = {0};
-PressureSensor pressureSensors[ENGINE_PRESSURE_SENSOR_AMOUNT]    = {0};
-TemperatureSensor temperatureSensors[ENGINE_THERMISTANCE_AMOUNT] = {0};
+Valve valves[FILLING_STATION_VALVE_AMOUNT]                                      = {0};
+PressureSensor pressureSensors[FILLING_STATION_PRESSURE_SENSOR_AMOUNT]          = {0};
+TemperatureSensor temperatureSensors[FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT] = {0};
 Telecommunication telecom = {0};
 
 /* USER CODE END PV */
@@ -132,9 +132,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM4_Init();
   MX_USB_DEVICE_Init();
-  MX_SDIO_SD_Init();
+  //MX_SDIO_SD_Init();
   MX_SPI2_Init();
-  MX_FATFS_Init();
+  //MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
   // Setup Peripherals
@@ -151,7 +151,7 @@ int main(void)
   setupTemperatureSensors();
   setupTelecommunication();
   
-  Engine_init(pwms, &adc, gpios, &uart, &usb, valves, temperatureSensors, &telecom);
+  FillingStation_init(pwms, &adc, gpios, &uart, &usb, valves, temperatureSensors, &telecom);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -184,7 +184,7 @@ int main(void)
     data[3] = 0;
 
     storage.fetchData(&storage, data);*/
-    Engine_tick(HAL_GetTick());
+    FillingStation_tick(HAL_GetTick());
     uint8_t d[] = "+++";
     //HAL_UART_Transmit(&huart1, d, sizeof(d)-1, HAL_MAX_DELAY);
     uint8_t din[10];
@@ -701,55 +701,43 @@ static void MX_GPIO_Init(void)
 // These should only link HAL to instance and set base function pointers
 
 void setupGPIOs() {
-  gpios[ENGINE_IGNITER_1_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_IGNITER_1_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_IGNITER_1_GPIO_INDEX].pinNumber = GPIO_PIN_0;
-  gpios[ENGINE_IGNITER_1_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
-  gpios[ENGINE_IGNITER_1_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_7;
+  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[ENGINE_IGNITER_2_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_IGNITER_2_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_IGNITER_2_GPIO_INDEX].pinNumber = GPIO_PIN_1;
-  gpios[ENGINE_IGNITER_2_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
-  gpios[ENGINE_IGNITER_2_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_8;
+  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[ENGINE_NOS_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_NOS_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_NOS_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_7;
-  gpios[ENGINE_NOS_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[ENGINE_NOS_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_9;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[ENGINE_NOS_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_NOS_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_NOS_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_8;
-  gpios[ENGINE_NOS_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[ENGINE_NOS_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
-
-  gpios[ENGINE_IPA_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_IPA_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_IPA_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_9;
-  gpios[ENGINE_IPA_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[ENGINE_IPA_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
-
-  gpios[ENGINE_IPA_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[ENGINE_IPA_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[ENGINE_IPA_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_10;
-  gpios[ENGINE_IPA_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[ENGINE_IPA_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_10;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 }
 
 void setupPWMs() {
-  pwms[ENGINE_IPA_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
-  pwms[ENGINE_IPA_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
-  pwms[ENGINE_IPA_VALVE_PWM_INDEX].externalHandle = &htim4;
-  pwms[ENGINE_IPA_VALVE_PWM_INDEX].timer = TIM4;
-  pwms[ENGINE_IPA_VALVE_PWM_INDEX].channel = TIM_CHANNEL_3;
+  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
+  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
+  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].externalHandle = &htim4;
+  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].timer = TIM4;
+  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].channel = TIM_CHANNEL_3;
 
-  pwms[ENGINE_NOS_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
-  pwms[ENGINE_NOS_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
-  pwms[ENGINE_NOS_VALVE_PWM_INDEX].externalHandle = &htim4;
-  pwms[ENGINE_NOS_VALVE_PWM_INDEX].timer = TIM4;
-  pwms[ENGINE_NOS_VALVE_PWM_INDEX].channel = TIM_CHANNEL_2;
+  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
+  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
+  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].externalHandle = &htim4;
+  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].timer = TIM4;
+  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].channel = TIM_CHANNEL_2;
 }
 
 void setupADC() {
@@ -757,101 +745,41 @@ void setupADC() {
   adc.init = (ADC12_init)ADC12HAL_init;
   adc.externalHandle = &hadc1;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 0;
+  adc.channels[FILLING_STATION_FILL_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_FILL_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_FILL_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 1;
+  adc.channels[FILLING_STATION_FILL_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_FILL_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 0;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_2_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_2_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_2_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 2;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_2_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_2_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 1;
+  adc.channels[FILLING_STATION_QUICK_CONNECT_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_QUICK_CONNECT_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_QUICK_CONNECT_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 2;
+  adc.channels[FILLING_STATION_QUICK_CONNECT_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_QUICK_CONNECT_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 1;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_3_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_3_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_3_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 3;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_3_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_3_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 2;
+  adc.channels[FILLING_STATION_NOS_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_NOS_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_NOS_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 3;
+  adc.channels[FILLING_STATION_NOS_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_NOS_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 2;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_4_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_4_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_4_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 4;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_4_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_4_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 3;
+  adc.channels[FILLING_STATION_IPA_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_IPA_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_IPA_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 4;
+  adc.channels[FILLING_STATION_IPA_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_IPA_VALVE_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 3;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_5_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_5_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_5_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 5;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_5_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_5_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 4;
+  adc.channels[FILLING_STATION_TANK_LOAD_CELL_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_TANK_LOAD_CELL_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_TANK_LOAD_CELL_ADC_CHANNEL_INDEX].rank = 5;
+  adc.channels[FILLING_STATION_TANK_LOAD_CELL_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_TANK_LOAD_CELL_ADC_CHANNEL_INDEX].channelNumber = 4;
 
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_6_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_6_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_6_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 6;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_6_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_6_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 5;
-
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_7_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_7_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_7_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 7;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_7_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_7_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 6;
-
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_8_THERMISTANCE_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_8_THERMISTANCE_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_8_THERMISTANCE_ADC_CHANNEL_INDEX].rank = 8;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_8_THERMISTANCE_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_8_THERMISTANCE_ADC_CHANNEL_INDEX].channelNumber = 7;
-
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].rank = 9;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].channelNumber = 8;
-
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].rank = 10;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_NOS_TANK_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].channelNumber = 9;
-
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].rank = 11;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].channelNumber = 10;
-
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].rank = 12;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_NOS_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].channelNumber = 11;
-
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].rank = 13;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].channelNumber = 12;
-
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].rank = 14;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_IPA_MANIFOLD_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].channelNumber = 13;
-
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].rank = 15;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_1].channelNumber = 14;
-
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].errorStatus.bits.notInitialized = 1;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].init = (ADC12Channel_init)ADC12ChannelHAL_init;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].rank = 16;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
-  adc.channels[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_ADC_CHANNEL_INDEX_2].channelNumber = 15;
+  adc.channels[FILLING_STATION_COMBUSTION_CHAMBER_LOAD_CELL_ADC_CHANNEL_INDEX].errorStatus.bits.notInitialized = 1;
+  adc.channels[FILLING_STATION_COMBUSTION_CHAMBER_LOAD_CELL_ADC_CHANNEL_INDEX].init = (ADC12Channel_init)ADC12ChannelHAL_init;
+  adc.channels[FILLING_STATION_COMBUSTION_CHAMBER_LOAD_CELL_ADC_CHANNEL_INDEX].rank = 6;
+  adc.channels[FILLING_STATION_COMBUSTION_CHAMBER_LOAD_CELL_ADC_CHANNEL_INDEX].sampleTime_adcClockCyles = ADC_SAMPLETIME_28CYCLES;
+  adc.channels[FILLING_STATION_COMBUSTION_CHAMBER_LOAD_CELL_ADC_CHANNEL_INDEX].channelNumber = 5;
 }
 
 void setupUART() {
@@ -868,7 +796,7 @@ void setupUSB() {
 }
 
 void setupValves() {
-  for (uint8_t i = 0; i < ENGINE_VALVE_AMOUNT; i++) {
+  for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     valves[i].errorStatus.bits.notInitialized = 1;
     valves[i].init = (Valve_init)HBL388_init;
   }
@@ -879,7 +807,7 @@ void setupIgniter() {
 }
 
 void setupTemperatureSensors() {
-  for (uint8_t i = 0; i < ENGINE_THERMISTANCE_AMOUNT; i++) {
+  for (uint8_t i = 0; i < FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT; i++) {
     temperatureSensors[i].errorStatus.bits.notInitialized = 1;
     temperatureSensors[i].init = (TemperatureSensor_init)NTC3950_init;
   }
@@ -891,7 +819,7 @@ void setupTelecommunication(){
 }
 
 void setupPressureSensors() {
-  for (uint8_t i = 0; i < ENGINE_PRESSURE_SENSOR_AMOUNT; i++) {
+  for (uint8_t i = 0; i < FILLING_STATION_PRESSURE_SENSOR_AMOUNT; i++) {
     pressureSensors[i].errorStatus.bits.notInitialized = 1;
     pressureSensors[i].init = (PressureSensor_init)ETM375_init;
   }

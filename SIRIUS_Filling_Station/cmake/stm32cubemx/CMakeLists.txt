@@ -49,7 +49,7 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/sirius-embedded-common/Src/LowLevelDriver/PWM/PWMHAL.c
     ../../Core/sirius-embedded-common/Src/LowLevelDriver/USB/USB.c
     ../../Core/sirius-embedded-common/Src/LowLevelDriver/USB/USBHAL.c
-    ../../Core/Src/Engine.c
+    ../../Core/Src/FillingStation.c
     ../../Core/Src/main.c
     ../../FATFS/App/fatfs.c
     ../../FATFS/Target/sd_diskio.c
