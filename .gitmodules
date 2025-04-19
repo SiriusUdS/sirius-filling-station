@@ -1,0 +1,6 @@
+[submodule "SIRIUS_Filling_Station/Core/sirius-embedded-common"]
+	path = SIRIUS_Filling_Station/Core/sirius-embedded-common
+	url = https://github.com/SiriusUdS/sirius-embedded-common.git
+[submodule "Sirius_Filling_Station/Core/sirius-embedded-common"]
+	path = Sirius_Filling_Station/Core/sirius-embedded-common
+	url = https://github.com/SiriusUdS/sirius-embedded-common.git
