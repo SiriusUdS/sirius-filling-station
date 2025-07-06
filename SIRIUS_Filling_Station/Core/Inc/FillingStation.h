@@ -22,10 +22,27 @@
 #include "../sirius-embedded-common/sirius-headers-common/FillingStation/FillingStationState.h"
 
 #include "../sirius-embedded-common/Inc/Device/Telecommunication/Telecommunication.h"
+#include "../sirius-embedded-common/sirius-headers-common/Telecommunication/TelemetryPacket.h"
+#include "../sirius-embedded-common/sirius-headers-common/Telecommunication/BoardCommand.h"
+#include "../sirius-embedded-common/Inc/Device/Telecommunication/XBEE.h"
 
 #include "stm32f4xx_hal.h"
 
 #define FUNCTION_NULL_POINTER 0
+
+#define ADC_BUFFER_SIZE_BYTES 0x10000
+
+#define TIME_BETWEEN_TELEMETRY_PACKETS_MS        (uint8_t)91
+#define TELEMETRY_PACKETS_BETWEEN_STATUS_PACKETS (uint8_t)5
+
+#define FILTER_TELEMETRY_OFFSET (((sizeof(FillingStationADCBuffer) / 2)/sizeof(uint16_t)) / 64)
+
+typedef union {
+  uint16_t values[ADC_BUFFER_SIZE_BYTES / sizeof(uint16_t)];
+
+  uint8_t hex[ADC_BUFFER_SIZE_BYTES];
+}
+FillingStationADCBuffer;
 
 typedef struct {
   FillingStationErrorStatus errorStatus;
@@ -37,16 +54,17 @@ typedef struct {
   PWM*   pwms;
   GPIO*  gpios;
   UART*  uart;
-  USB*   usb;
 
   Valve*             valves;
   TemperatureSensor* temperatureSensors;
   PressureSensor*    pressureSensors;
   Telecommunication* telecom;
+  uint32_t           telecommunicationTimestampTarget_ms;
+  uint8_t            telecommunicationTelemetryPacketCount;
 }
 FillingStation;
 
-extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, USB* usb, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom);
+extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom);
 
 extern void FillingStation_tick(uint32_t timestamp_ms);
 

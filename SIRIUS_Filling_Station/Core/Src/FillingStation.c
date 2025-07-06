@@ -2,9 +2,12 @@
 
 static volatile FillingStation fillStation;
 
-uint32_t previous;
-uint32_t previous2;
-uint16_t testValueThermistance = 0;
+static volatile FillingStationADCBuffer adcBuffer = {0};
+
+uint16_t filteredTelemetryValues[16] = {0};
+
+uint8_t uart_rx_buffer[132] = {0};
+uint8_t uart_tx_buffer[44] = {0};
 
 static void executeInit(uint32_t timestamp_ms);
 static void executeIdle(uint32_t timestamp_ms);
@@ -18,7 +21,6 @@ static void initPWMs();
 static void initADC();
 static void initGPIOs();
 static void initUART();
-static void initUSB();
 
 static void initValves();
 static void initTemperatureSensors();
@@ -27,7 +29,56 @@ static void initTelecom();
 static void tickValves(uint32_t timestamp_ms);
 static void tickTemperatureSensors();
 
-void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, USB* usb, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom) {
+static void handleTelecommunication(uint32_t timestamp_ms);
+static void handleCurrentCommand();
+static void handleCurrentCommandIdle();
+static void handleCurrentCommandArming();
+static void handleCurrentCommandActive();
+static void handleCurrentCommandAbort();
+
+static void filterTelemetryValues(uint8_t index);
+
+static void sendTelemetryPacket(uint32_t timestamp_ms);
+static void sendStatusPacket(uint32_t timestamp_ms);
+static uint32_t computeCrc(uint8_t* data, uint16_t size);
+
+static void getReceivedCommand();
+static uint8_t checkCommandCrc();
+
+BoardCommand currentCommand = {0};
+
+FillingStationStatusPacket statusPacket = {
+  .fields = {
+    .header = {
+      .bits = {
+        .type = STATUS_TYPE_CODE,
+        .boardId = TELEMETRY_ENGINE_BOARD_ID
+      }
+    },
+    .timestamp_ms = 0,
+    //.temperatureSensorErrorStatus = {0},
+    //.pressureSensorErrorStatus = {0},
+    //.engineErrorStatus = 0,
+    //.engineStatus = 0,
+    .crc = 0
+  }
+};
+
+FillingStationTelemetryPacket telemetryPacket = {
+  .fields = {
+    .header = {
+      .bits = {
+        .type = TELEMETRY_TYPE_CODE,
+        .boardId = TELEMETRY_ENGINE_BOARD_ID
+      }
+    },
+    .timestamp_ms = 0,
+    .adcValues = {0},
+    .crc = 0
+  }
+};
+
+void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom) {
   fillStation.errorStatus.value  = 0;
   fillStation.status.value       = 0;
   fillStation.currentState       = FILLING_STATION_STATE_INIT;
@@ -36,7 +87,6 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, USB* us
   fillStation.adc    = adc;
   fillStation.gpios  = gpios;
   fillStation.uart   = uart;
-  fillStation.usb    = usb;
 
   fillStation.valves = valves;
   fillStation.temperatureSensors = temperatureSensors;
@@ -50,12 +100,12 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, USB* us
   initPWMs();
   initGPIOs();
   initUART();
-  initUSB();
 }
 
 void FillingStation_tick(uint32_t timestamp_ms) {
   tickTemperatureSensors(timestamp_ms);
   tickValves(timestamp_ms);
+  handleTelecommunication(timestamp_ms);
 
   FillingStation_execute(timestamp_ms);
 }
@@ -96,53 +146,11 @@ void executeInit(uint32_t timestamp_ms) {
   }
   fillStation.currentState = FILLING_STATION_STATE_IDLE;
 
-  fillStation.telecom->setupTelecom((struct Telecommunication*) fillStation.telecom);
+  fillStation.telecom->init((struct Telecommunication*) fillStation.telecom);
 }
 
 void executeIdle(uint32_t timestamp_ms) {
-  TemperatureSensorPacket testPacket = {
-    .fields = {
-      .header = {
-        .values[0] = TEMPERATURE_SENSOR_DATA_HEADER_CODE & 0xFFFFFF00
-      },
-      .rawData = {
-        .members = {
-          .data = {
-            .rawTemperature = testValueThermistance
-          },
-          .status = fillStation.temperatureSensors[0].status,
-          .errorStatus = fillStation.temperatureSensors[0].errorStatus,
-          .timeStamp_ms = timestamp_ms
-        }
-      }
-    }
-  };
-  uint8_t data[] = "FUCK TRUMP!";
-
-  if (HAL_GetTick() - previous >= 100) {
-    previous = HAL_GetTick();
-    //CDC_Transmit_FS(data, sizeof(data) - 1);
-    testValueThermistance++;
-    testPacket.fields.rawData.members.data.rawTemperature = testValueThermistance;
-    fillStation.usb->transmit((struct USB*)fillStation.usb, testPacket.data, sizeof(TemperatureSensorPacket));
-  }
-
-  if (fillStation.usb->status.bits.rxDataReady == 1) {
-    uint8_t* test = fillStation.usb->rxBuffer;
-    fillStation.usb->status.bits.rxDataReady = 0;
-  }
-  // Wait for arming command, collect data
-  /*if(HAL_GetTick() - previous2 >= 500){
-    previous2 = HAL_GetTick();
-
-    engine.telecom->sendData((struct Telecommunication*)engine.telecom, data, sizeof(data)-1);
-  }*/
-  /*engine.valves[ENGINE_IPA_VALVE_INDEX].open((struct Valve*)&engine.valves[ENGINE_IPA_VALVE_INDEX], timestamp_ms);
-  HAL_Delay(1000);
-  engine.valves[ENGINE_IPA_VALVE_INDEX].setIdle((struct Valve*)&engine.valves[ENGINE_IPA_VALVE_INDEX]);
-  engine.valves[ENGINE_IPA_VALVE_INDEX].close((struct Valve*)&engine.valves[ENGINE_IPA_VALVE_INDEX], timestamp_ms);
-  HAL_Delay(1000);
-  engine.valves[ENGINE_IPA_VALVE_INDEX].setIdle((struct Valve*)&engine.valves[ENGINE_IPA_VALVE_INDEX]);*/
+  
   
 }
 
@@ -182,7 +190,7 @@ void initADC() {
     fillStation.adc->errorStatus.bits.nullFunctionPointer = 1;
   }
   else {
-    fillStation.adc->init((struct ADC12*)fillStation.adc, FILLING_STATION_ADC_CHANNEL_AMOUNT);
+    fillStation.adc->init((struct ADC12*)fillStation.adc, adcBuffer.values, sizeof(adcBuffer), FILLING_STATION_ADC_CHANNEL_AMOUNT);
   }
 
   for (uint8_t i = 0; i < FILLING_STATION_ADC_CHANNEL_AMOUNT; i++) {
@@ -213,15 +221,7 @@ void initUART() {
   }
 
   fillStation.uart->init((struct UART*)fillStation.uart);
-}
-
-void initUSB() {
-  if (fillStation.usb->init == FUNCTION_NULL_POINTER) {
-    fillStation.usb->errorStatus.bits.nullFunctionPointer = 1;
-    return;
-  }
-
-  fillStation.usb->init((struct USB*)fillStation.usb);
+  HAL_UART_Receive_DMA(fillStation.uart->externalHandle, uart_rx_buffer, sizeof(uart_rx_buffer));
 }
 
 void initValves() {
@@ -278,5 +278,137 @@ void tickValves(uint32_t timestamp_ms) {
 void tickTemperatureSensors() {
   for (uint8_t i = 0; i < FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT; i++) {
     fillStation.temperatureSensors[i].tick((struct TemperatureSensor*)&fillStation.temperatureSensors[i]);
+  }
+}
+
+void handleTelecommunication(uint32_t timestamp_ms) {
+  if (fillStation.telecommunicationTimestampTarget_ms <= timestamp_ms) {
+    if (fillStation.telecommunicationTelemetryPacketCount > TELEMETRY_PACKETS_BETWEEN_STATUS_PACKETS) {
+      fillStation.telecommunicationTelemetryPacketCount = 0;
+      sendStatusPacket(timestamp_ms);
+    }
+    else {
+      sendTelemetryPacket(timestamp_ms);
+      fillStation.telecommunicationTelemetryPacketCount++;
+    }
+    fillStation.telecommunicationTimestampTarget_ms = timestamp_ms + TIME_BETWEEN_TELEMETRY_PACKETS_MS;
+  }
+}
+
+void handleCurrentCommand() {
+  switch (fillStation.currentState) {
+    case FILLING_STATION_STATE_INIT:
+      break;
+    case FILLING_STATION_STATE_IDLE:
+      handleCurrentCommandIdle();
+      break;
+    case FILLING_STATION_STATE_ABORT:
+      //handleCurrentCommandAbort();
+      break;
+    default:
+      //engine.errorStatus.bits.invalidCommand = 1;
+      break;
+  }
+}
+
+void handleCurrentCommandIdle() {
+  switch (currentCommand.fields.header.bits.commandCode) {
+    case FILLING_STATION_COMMAND_CODE_OPEN_FILL_VALVE_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], currentCommand.fields.value);
+      } else {
+        //fillStation.errorStatus.bits.invalidCommandValue = 1;
+      }
+      break;
+  }
+}
+
+void sendTelemetryPacket(uint32_t timestamp_ms) {
+  telemetryPacket.fields.timestamp_ms = timestamp_ms;
+  for (uint8_t i = 0; i < ENGINE_ADC_CHANNEL_AMOUNT; i++) {
+    filterTelemetryValues(i);
+    telemetryPacket.fields.adcValues[i] = filteredTelemetryValues[i];
+  }
+  telemetryPacket.fields.crc = 0;
+  fillStation.telecom->sendData((struct Telecommunication*)fillStation.telecom, telemetryPacket.data, sizeof(FillingStationTelemetryPacket));
+}
+
+void sendStatusPacket(uint32_t timestamp_ms) {
+  statusPacket.fields.timestamp_ms = timestamp_ms;
+  //statusPacket.fields.engineErrorStatus = engine.errorStatus.value;
+  //statusPacket.fields.engineStatus = engine.status.value;
+  //statusPacket.fields.pressureSensorErrorStatus[ENGINE_NOS_TANK_PRESSURE_SENSOR_INDEX] = engine.pressureSensors[ENGINE_NOS_TANK_PRESSURE_SENSOR_INDEX].errorStatus.value;
+  //statusPacket.fields.pressureSensorErrorStatus[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_INDEX] = engine.pressureSensors[ENGINE_COMBUSTION_CHAMBER_PRESSURE_SENSOR_INDEX].errorStatus.value;
+  //statusPacket.fields.temperatureSensorErrorStatus[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_INDEX] = engine.temperatureSensors[ENGINE_COMBUSTION_CHAMBER_1_THERMISTANCE_INDEX].errorStatus.value;
+  //statusPacket.fields.valvesStatus[ENGINE_NOS_VALVE_INDEX] = engine.valves[ENGINE_NOS_VALVE_INDEX].status.value;
+  //statusPacket.fields.valvesStatus[ENGINE_IPA_VALVE_INDEX] = engine.valves[ENGINE_IPA_VALVE_INDEX].status.value;
+  statusPacket.fields.crc = 0;
+
+  fillStation.telecom->sendData((struct Telecommunication*)fillStation.telecom, statusPacket.data, sizeof(FillingStationStatusPacket));
+}
+
+void getReceivedCommand() {
+  for (uint8_t i = 0; i < sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1; i++) {
+    currentCommand.data[0] = uart_rx_buffer[i];
+    currentCommand.data[1] = uart_rx_buffer[i + 1];
+    currentCommand.data[2] = uart_rx_buffer[i + 2];
+    currentCommand.data[3] = uart_rx_buffer[i + 3];
+    if (currentCommand.fields.header.bits.type == BOARD_COMMAND_TYPE_CODE &&
+        currentCommand.fields.header.bits.boardId == TELEMETRY_ENGINE_BOARD_ID) {
+      for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
+        currentCommand.data[j] = uart_rx_buffer[i + j];
+        if (checkCommandCrc()) {
+          i += sizeof(BoardCommand) - 1;
+          handleCurrentCommand();
+          break;
+        }
+      }
+    }
+  }
+  /*engine.telecommunication->receiveData((struct Telecommunication*)engine.telecommunication, currentCommand.data, sizeof(BoardCommand));
+  #ifdef USB_ENABLED
+    if (engine.usb->status.bits.rxDataReady == 1) {
+      // header
+      for (uint8_t i = 0; i < 4; i++) {
+        currentCommand.data[i] = engine.usb->rxBuffer[i];
+      }
+
+      if (currentCommand.fields.header.bits.type == TELEMETRY_TYPE_CODE &&
+          currentCommand.fields.header.bits.boardId == TELEMETRY_ENGINE_BOARD_ID) {
+        for (uint8_t i = 4; i < sizeof(BoardCommand); i++) {
+          currentCommand.data[i] = engine.usb->rxBuffer[i];
+        }
+      }
+      
+      engine.usb->status.bits.rxDataReady = 0;
+    }
+  #endif*/
+}
+
+void filterTelemetryValues(uint8_t index) {
+  uint32_t filteredValue = 0;
+  for (uint16_t i = 0; i < 64; i++) {
+    filteredValue += adcBuffer.values[index + i * FILTER_TELEMETRY_OFFSET];
+  }
+  filteredTelemetryValues[index] = filteredValue >> 6;
+  //filteredTelemetryValues[index] = engine.dmaAdcBuffer->values[index];
+}
+
+uint8_t checkCommandCrc() {
+  return 1;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == USART1) {
+    
+    getReceivedCommand();
+    HAL_UART_Receive_DMA(huart, uart_rx_buffer, sizeof(uart_rx_buffer));
+  }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == USART1) {
+    // Transmission complete callback
+    // Example: Prepare next data to send if needed
   }
 }

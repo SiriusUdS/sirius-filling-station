@@ -18,12 +18,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "fatfs.h"
-#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "usbd_cdc_if.h"
 #include "FillingStation.h"
 /* USER CODE END Includes */
 
@@ -46,13 +43,13 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
-SD_HandleTypeDef hsd;
-
 SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
 GPIO gpios[FILLING_STATION_GPIO_AMOUNT] = {0};
@@ -75,7 +72,6 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM4_Init(void);
-static void MX_SDIO_SD_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -83,7 +79,6 @@ static void setupGPIOs();
 static void setupPWMs();
 static void setupADC();
 static void setupUART();
-static void setupUSB();
 
 static void setupValves();
 static void setupIgniter();
@@ -131,10 +126,7 @@ int main(void)
   MX_ADC1_Init();
   MX_USART1_UART_Init();
   MX_TIM4_Init();
-  MX_USB_DEVICE_Init();
-  //MX_SDIO_SD_Init();
   MX_SPI2_Init();
-  //MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
   // Setup Peripherals
@@ -142,7 +134,6 @@ int main(void)
   setupPWMs();
   setupGPIOs();
   setupUART();
-  setupUSB();
 
   // Setup Sensors/Devices
   setupValves();
@@ -151,69 +142,15 @@ int main(void)
   setupTemperatureSensors();
   setupTelecommunication();
   
-  FillingStation_init(pwms, &adc, gpios, &uart, &usb, valves, temperatureSensors, &telecom);
+  FillingStation_init(pwms, &adc, gpios, &uart, valves, temperatureSensors, &telecom);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  /*Storage storage = {
-    .fetchData = SDCard_fetch4kbData,
-    .storePage = SDCard_store4kbData,
-    .init = SDCard_init,
-    .externalInstance = (void*)&SDFatFS,
-  };*/
-
-  /*uint8_t data[4096/8] = {0};
-  data[0] = 1;
-  data[1] = 2;
-  data[2] = 3;
-  data[3] = 4;*/
 
   while (1)
   { 
-    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
-    /*data[0] = 1;
-    data[1] = 2;
-    data[2] = 3;
-    data[3] = 4;
-    storage.storePage(&storage, data);
-
-    data[0] = 0;
-    data[1] = 0;
-    data[2] = 0;
-    data[3] = 0;
-
-    storage.fetchData(&storage, data);*/
     FillingStation_tick(HAL_GetTick());
-    uint8_t d[] = "+++";
-    //HAL_UART_Transmit(&huart1, d, sizeof(d)-1, HAL_MAX_DELAY);
-    uint8_t din[10];
-    uint32_t in = 0;
-    /*while(1){
-      HAL_UART_Receive(&huart1, din, 10, HAL_MAX_DELAY);
-      if(din[0] == 'O'){
-        break;
-      }
-
-      in++;
-
-    }*/
-    //HAL_Delay(100);
-    // E_MATCH
-    /*HAL_GPIO_WritePin(GPIOE, GPIO_PIN_0, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET);
-    HAL_Delay(1000);
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_0, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_RESET);
-    HAL_Delay(1000);*/
-
-    // HEATPAD
-    //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_SET);
-    //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_SET);
-    /*HAL_Delay(750);
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_RESET);
-    HAL_Delay(250);*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -454,34 +391,6 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief SDIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SDIO_SD_Init(void)
-{
-
-  /* USER CODE BEGIN SDIO_Init 0 */
-
-  /* USER CODE END SDIO_Init 0 */
-
-  /* USER CODE BEGIN SDIO_Init 1 */
-
-  /* USER CODE END SDIO_Init 1 */
-  hsd.Instance = SDIO;
-  hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
-  hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
-  hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
-  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd.Init.ClockDiv = 0;
-  /* USER CODE BEGIN SDIO_Init 2 */
-
-  /* USER CODE END SDIO_Init 2 */
-
-}
-
-/**
   * @brief SPI2 Initialization Function
   * @param None
   * @retval None
@@ -632,6 +541,12 @@ static void MX_DMA_Init(void)
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  /* DMA2_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 
 }
 
@@ -678,12 +593,28 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : SDIO_D0_UNUSED_Pin */
+  GPIO_InitStruct.Pin = SDIO_D0_UNUSED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
+  HAL_GPIO_Init(SDIO_D0_UNUSED_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : GPIO_OUTPUT_HEATPAD_1_Pin GPIO_OUTPUT_HEATPAD_2_Pin */
   GPIO_InitStruct.Pin = GPIO_OUTPUT_HEATPAD_1_Pin|GPIO_OUTPUT_HEATPAD_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : GPIO_OUTPUT_EMATCH_1_Pin GPIO_OUTPUT_EMATCH_2_Pin */
   GPIO_InitStruct.Pin = GPIO_OUTPUT_EMATCH_1_Pin|GPIO_OUTPUT_EMATCH_2_Pin;
@@ -788,13 +719,6 @@ void setupUART() {
   uart.externalHandle = &huart1;
 }
 
-void setupUSB() {
-  usb.errorStatus.bits.notInitialized = 1;
-  usb.init = (USB_init)USBHAL_init;
-
-  usbCdc = &usb;
-}
-
 void setupValves() {
   for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     valves[i].errorStatus.bits.notInitialized = 1;
@@ -815,7 +739,7 @@ void setupTemperatureSensors() {
 
 void setupTelecommunication(){
   telecom.errorStatus.bits.notInitialized = 1;
-  telecom.init = (Telecommunication_init)TELECOM_init;
+  telecom.init = (Telecommunication_init)XBEE_init;
 }
 
 void setupPressureSensors() {
