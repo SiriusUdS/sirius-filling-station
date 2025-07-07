@@ -43,6 +43,8 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
+CRC_HandleTypeDef hcrc;
+
 SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim4;
@@ -73,6 +75,7 @@ static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
 
 static void setupGPIOs();
@@ -127,6 +130,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM4_Init();
   MX_SPI2_Init();
+  MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 
   // Setup Peripherals
@@ -387,6 +391,32 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief CRC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CRC_Init(void)
+{
+
+  /* USER CODE BEGIN CRC_Init 0 */
+
+  /* USER CODE END CRC_Init 0 */
+
+  /* USER CODE BEGIN CRC_Init 1 */
+
+  /* USER CODE END CRC_Init 1 */
+  hcrc.Instance = CRC;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CRC_Init 2 */
+
+  /* USER CODE END CRC_Init 2 */
 
 }
 

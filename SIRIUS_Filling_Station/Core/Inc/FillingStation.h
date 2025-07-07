@@ -25,6 +25,7 @@
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/TelemetryPacket.h"
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/BoardCommand.h"
 #include "../sirius-embedded-common/Inc/Device/Telecommunication/XBEE.h"
+#include "../sirius-embedded-common/sirius-headers-common/Telecommunication/PacketHeaderVariable.h"
 
 #include "stm32f4xx_hal.h"
 
