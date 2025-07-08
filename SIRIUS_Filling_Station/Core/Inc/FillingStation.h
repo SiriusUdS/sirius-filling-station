@@ -38,6 +38,12 @@
 
 #define FILTER_TELEMETRY_OFFSET (((sizeof(FillingStationADCBuffer) / 2)/sizeof(uint16_t)) / 64)
 
+#define FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT   (uint8_t)26
+#define FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT (uint8_t)54
+
+#define FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT   (uint8_t)54
+#define FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT (uint8_t)26
+
 typedef union {
   uint16_t values[ADC_BUFFER_SIZE_BYTES / sizeof(uint16_t)];
 

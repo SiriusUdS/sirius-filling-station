@@ -219,10 +219,14 @@ void initValves() {
   fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX];
   fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX];
   fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT;
 
   fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX];
   fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX];
   fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT;
 
   for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     if (fillStation.valves[i].init == FUNCTION_NULL_POINTER) {
@@ -341,14 +345,15 @@ void getReceivedCommand() {
     currentCommand.data[1] = uart_rx_buffer[i + 1];
     currentCommand.data[2] = uart_rx_buffer[i + 2];
     currentCommand.data[3] = uart_rx_buffer[i + 3];
-    if (currentCommand.fields.header.bits.type == BOARD_COMMAND_TYPE_CODE &&
-        currentCommand.fields.header.bits.boardId == FILLING_STATION_BOARD_ID) {
-      for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
-        currentCommand.data[j] = uart_rx_buffer[i + j];
-        if (checkCommandCrc()) {
-          i += sizeof(BoardCommand) - 1;
-          handleCurrentCommand();
-          break;
+    if (currentCommand.fields.header.bits.type == BOARD_COMMAND_TYPE_CODE) {
+      if (currentCommand.fields.header.bits.boardId == FILLING_STATION_BOARD_ID) {
+        for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
+          currentCommand.data[j] = uart_rx_buffer[i + j];
+          if (checkCommandCrc()) {
+            i += sizeof(BoardCommand) - 1;
+            handleCurrentCommand();
+            break;
+          }
         }
       }
     }
