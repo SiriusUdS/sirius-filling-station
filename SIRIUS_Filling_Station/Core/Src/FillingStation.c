@@ -118,17 +118,17 @@ void FillingStation_execute(uint32_t timestamp_ms) {
       executeInit(timestamp_ms);
       break;
     case FILLING_STATION_STATE_SAFE:
-      executeIdle(timestamp_ms);
+      executeSafe(timestamp_ms);
       break;
     case FILLING_STATION_STATE_UNSAFE:
-      executeArming(timestamp_ms);
+      executeUnsafe(timestamp_ms);
       break;
     case FILLING_STATION_STATE_ABORT:
       executeAbort(timestamp_ms);
       break;
     default:
     fillStation.errorStatus.bits.invalidState = 1;
-      executeIdle(timestamp_ms);
+      executeSafe(timestamp_ms);
       break;
   }
 }
@@ -400,15 +400,15 @@ void getReceivedCommand() {
     currentCommand.data[1] = uart_rx_buffer[i + 1];
     currentCommand.data[2] = uart_rx_buffer[i + 2];
     currentCommand.data[3] = uart_rx_buffer[i + 3];
-    if (currentCommand.fields.header.bits.type == BOARD_COMMAND_TYPE_CODE) {
-      if (currentCommand.fields.header.bits.boardId == FILLING_STATION_BOARD_ID) {
-        for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
-          currentCommand.data[j] = uart_rx_buffer[i + j];
-          if (checkCommandCrc()) {
-            i += sizeof(BoardCommand) - 1;
-            handleCurrentCommand();
-            break;
-          }
+    if (currentCommand.fields.header.bits.type == BOARD_COMMAND_BROADCAST_TYPE_CODE || 
+        (currentCommand.fields.header.bits.type == BOARD_COMMAND_UNICAST_TYPE_CODE && 
+         currentCommand.fields.header.bits.boardId == FILLING_STATION_BOARD_ID)) {
+      for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
+        currentCommand.data[j] = uart_rx_buffer[i + j];
+        if (checkCommandCrc()) {
+          i += sizeof(BoardCommand) - 1;
+          handleCurrentCommand();
+          break;
         }
       }
     }
@@ -425,7 +425,7 @@ void filterTelemetryValues(uint8_t index) {
 
 uint8_t checkCommandCrc() {
   if (HAL_CRC_Calculate(fillStation.hcrc, currentCommand.data32, (sizeof(BoardCommand) / sizeof(uint32_t)) - sizeof(uint32_t)) != currentCommand.fields.crc) {
-    return 0;
+    //return 0;
   }
   return 1;
 }
