@@ -6,7 +6,7 @@ static volatile FillingStationADCBuffer adcBuffer = {0};
 
 uint16_t filteredTelemetryValues[16] = {0};
 
-uint8_t uart_rx_buffer[132] = {0};
+uint8_t uart_rx_buffer[88] = {0};
 uint8_t uart_tx_buffer[44] = {0};
 
 static void executeInit(uint32_t timestamp_ms);
@@ -30,15 +30,17 @@ static void tickValves(uint32_t timestamp_ms);
 static void tickTemperatureSensors();
 
 static void handleTelecommunication(uint32_t timestamp_ms);
+
 static void handleCurrentCommand();
-static void handleCurrentCommandIdle();
+static void handleCurrentCommandSafe();
+static void handleCurrentCommandUnsafe();
 static void handleCurrentCommandAbort();
+static void handleCommandAcknowledge();
 
 static void filterTelemetryValues(uint8_t index);
 
 static void sendTelemetryPacket(uint32_t timestamp_ms);
 static void sendStatusPacket(uint32_t timestamp_ms);
-static uint32_t computeCrc(uint8_t* data, uint16_t size);
 
 static void getReceivedCommand();
 static uint8_t checkCommandCrc();
@@ -54,10 +56,10 @@ FillingStationStatusPacket statusPacket = {
       }
     },
     .timestamp_ms = 0,
-    //.temperatureSensorErrorStatus = {0},
-    //.pressureSensorErrorStatus = {0},
-    //.engineErrorStatus = 0,
-    //.engineStatus = 0,
+    .errorStatus = 0,
+    .status = 0,
+    .valveStatus = {0},
+    .padding = {0},
     .crc = 0
   }
 };
@@ -76,7 +78,7 @@ FillingStationTelemetryPacket telemetryPacket = {
   }
 };
 
-void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom) {
+void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc) {
   fillStation.errorStatus.value  = 0;
   fillStation.status.value       = 0;
   fillStation.currentState       = FILLING_STATION_STATE_INIT;
@@ -85,6 +87,8 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   fillStation.adc    = adc;
   fillStation.gpios  = gpios;
   fillStation.uart   = uart;
+
+  fillStation.hcrc   = hcrc;
 
   fillStation.valves = valves;
   fillStation.temperatureSensors = temperatureSensors;
@@ -113,14 +117,11 @@ void FillingStation_execute(uint32_t timestamp_ms) {
     case FILLING_STATION_STATE_INIT:
       executeInit(timestamp_ms);
       break;
-    case FILLING_STATION_STATE_IDLE:
+    case FILLING_STATION_STATE_SAFE:
       executeIdle(timestamp_ms);
       break;
-    case FILLING_STATION_STATE_ARMING:
+    case FILLING_STATION_STATE_UNSAFE:
       executeArming(timestamp_ms);
-      break;
-    case FILLING_STATION_STATE_FILLING:
-      executeFilling(timestamp_ms);
       break;
     case FILLING_STATION_STATE_ABORT:
       executeAbort(timestamp_ms);
@@ -136,33 +137,22 @@ void executeInit(uint32_t timestamp_ms) {
   for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     fillStation.valves[i].close((struct Valve*)&fillStation.valves[i], timestamp_ms);
   }
-  fillStation.currentState = FILLING_STATION_STATE_IDLE;
+  fillStation.currentState = FILLING_STATION_STATE_SAFE;
 
   fillStation.telecom->init((struct Telecommunication*) fillStation.telecom);
 }
 
-void executeIdle(uint32_t timestamp_ms) {
+void executeSafe(uint32_t timestamp_ms) {
   
 }
 
-void executeArming(uint32_t timestamp_ms) {
-  // Wait for ignition command, completely armed
-}
-
-void executeArmed(uint32_t timestamp_ms) {
+void executeUnsafe(uint32_t timestamp_ms) {
   
-}
-
-void executeFilling(uint32_t timestamp_ms) {
-  
-}
-
-void executeFilled(uint32_t timestamp_ms) {
-  // stay mostly idle
 }
 
 void executeAbort(uint32_t timestamp_ms) {
-  // Check flowcharts for wtf to do
+  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], timestamp_ms);
+  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].open((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], timestamp_ms);
 }
 
 void initPWMs() {
@@ -294,28 +284,93 @@ void handleCurrentCommand() {
   switch (fillStation.currentState) {
     case FILLING_STATION_STATE_INIT:
       break;
-    case FILLING_STATION_STATE_IDLE:
-      handleCurrentCommandIdle();
+    case FILLING_STATION_STATE_SAFE:
+      handleCurrentCommandSafe();
+      break;
+    case FILLING_STATION_STATE_UNSAFE:
+      handleCurrentCommandUnsafe();
       break;
     case FILLING_STATION_STATE_ABORT:
-      //handleCurrentCommandAbort();
+      handleCurrentCommandAbort();
       break;
     default:
-      //engine.errorStatus.bits.invalidCommand = 1;
       break;
   }
 }
 
-void handleCurrentCommandIdle() {
+void handleCurrentCommandSafe() {
   switch (currentCommand.fields.header.bits.commandCode) {
+    case BOARD_COMMAND_CODE_ABORT:
+      fillStation.currentState = FILLING_STATION_STATE_ABORT;
+      break;
+    case BOARD_COMMAND_CODE_ACK:
+      handleCommandAcknowledge();
+      break;
+    case BOARD_COMMAND_CODE_UNSAFE:
+      fillStation.currentState = FILLING_STATION_STATE_UNSAFE;
+      break;
+  }
+}
+
+void handleCurrentCommandUnsafe() {
+  switch (currentCommand.fields.header.bits.commandCode) {
+    case BOARD_COMMAND_CODE_ABORT:
+      fillStation.currentState = FILLING_STATION_STATE_ABORT;
+      break;
+    case BOARD_COMMAND_CODE_ACK:
+      handleCommandAcknowledge();
+      break;
+    case BOARD_COMMAND_CODE_SAFE:
+      fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], HAL_GetTick());
+      fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], HAL_GetTick());
+      fillStation.currentState = FILLING_STATION_STATE_SAFE;
+      break;
     case FILLING_STATION_COMMAND_CODE_OPEN_FILL_VALVE_PCT:
       if (currentCommand.fields.value <= 100) {
         fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], currentCommand.fields.value);
-      } else {
-        //fillStation.errorStatus.bits.invalidCommandValue = 1;
       }
       break;
+    case FILLING_STATION_COMMAND_CODE_OPEN_DUMP_VALVE_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], currentCommand.fields.value);
+      }
+      break;
+    default:
+      break;
   }
+}
+
+void handleCurrentCommandAbort() {
+  switch (currentCommand.fields.header.bits.commandCode) {
+    case BOARD_COMMAND_CODE_RESET:
+      fillStation.currentState = FILLING_STATION_STATE_SAFE;
+      break;
+    case BOARD_COMMAND_CODE_ACK:
+      handleCommandAcknowledge();
+      break;
+    default:
+      break;
+  }
+}
+
+void handleCommandAcknowledge() {
+  CommandResponse commandResponse = {
+    .fields = {
+      .header = {
+        .bits = {
+          .type = COMMAND_RESPONSE_TYPE_CODE,
+          .boardId = GS_CONTROL_BOARD_ID,
+          .commandIndex = currentCommand.fields.header.bits.commandIndex,
+          .response = RESPONSE_CODE_OK
+        }
+      },
+      .crc = 0
+    }
+  };
+
+  commandResponse.fields.crc = HAL_CRC_Calculate((CRC_HandleTypeDef*)fillStation.hcrc, commandResponse.data32, (sizeof(CommandResponse) / sizeof(uint32_t)) - sizeof(uint32_t));
+
+  HAL_UART_Transmit_DMA(fillStation.uart->externalHandle, commandResponse.data, sizeof(CommandResponse));
 }
 
 void sendTelemetryPacket(uint32_t timestamp_ms) {
@@ -324,7 +379,7 @@ void sendTelemetryPacket(uint32_t timestamp_ms) {
     filterTelemetryValues(i);
     telemetryPacket.fields.adcValues[i] = filteredTelemetryValues[i];
   }
-  telemetryPacket.fields.crc = 0;
+  telemetryPacket.fields.crc = HAL_CRC_Calculate(fillStation.hcrc, telemetryPacket.data32, (sizeof(FillingStationTelemetryPacket) / sizeof(uint32_t)) - sizeof(uint32_t));
   fillStation.telecom->sendData((struct Telecommunication*)fillStation.telecom, telemetryPacket.data, sizeof(FillingStationTelemetryPacket));
 }
 
@@ -369,7 +424,10 @@ void filterTelemetryValues(uint8_t index) {
 }
 
 uint8_t checkCommandCrc() {
-  //HAL_CRC_Calculate
+  if (HAL_CRC_Calculate(fillStation.hcrc, currentCommand.data32, (sizeof(BoardCommand) / sizeof(uint32_t)) - sizeof(uint32_t)) != currentCommand.fields.crc) {
+    return 0;
+  }
+  return 1;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {

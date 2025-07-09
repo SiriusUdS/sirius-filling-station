@@ -146,7 +146,7 @@ int main(void)
   setupTemperatureSensors();
   setupTelecommunication();
   
-  FillingStation_init(pwms, &adc, gpios, &uart, valves, temperatureSensors, &telecom);
+  FillingStation_init(pwms, &adc, gpios, &uart, valves, temperatureSensors, &telecom, &hcrc);
   /* USER CODE END 2 */
 
   /* Infinite loop */

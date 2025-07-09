@@ -24,6 +24,7 @@
 #include "../sirius-embedded-common/Inc/Device/Telecommunication/Telecommunication.h"
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/TelemetryPacket.h"
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/BoardCommand.h"
+#include "../sirius-embedded-common/sirius-headers-common/Telecommunication/CommandResponse.h"
 #include "../sirius-embedded-common/Inc/Device/Telecommunication/XBEE.h"
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/PacketHeaderVariable.h"
 
@@ -62,6 +63,8 @@ typedef struct {
   GPIO*  gpios;
   UART*  uart;
 
+  CRC_HandleTypeDef* hcrc;
+
   Valve*             valves;
   TemperatureSensor* temperatureSensors;
   PressureSensor*    pressureSensors;
@@ -71,7 +74,7 @@ typedef struct {
 }
 FillingStation;
 
-extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom);
+extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc);
 
 extern void FillingStation_tick(uint32_t timestamp_ms);
 
