@@ -4,18 +4,19 @@ static volatile FillingStation fillStation;
 
 static volatile FillingStationADCBuffer adcBuffer = {0};
 
+uint32_t timeSinceLastCommand_ms = 0;
+uint32_t lastCommandTimestamp_ms = 0;
+
 uint16_t filteredTelemetryValues[16] = {0};
 
-uint8_t uart_rx_buffer[88] = {0};
-uint8_t uart_tx_buffer[44] = {0};
+uint8_t uart_rx_buffer[220] = {0};
 
 static void executeInit(uint32_t timestamp_ms);
-static void executeIdle(uint32_t timestamp_ms);
+static void executeSafe(uint32_t timestamp_ms);
 static void executeAbort(uint32_t timestamp_ms);
-static void executeArming(uint32_t timestamp_ms);
-static void executeArmed(uint32_t timestamp_ms);
-static void executeFilling(uint32_t timestamp_ms);
-static void executeFilled(uint32_t timestamp_ms);
+static void executeUnsafe(uint32_t timestamp_ms);
+
+static void executeAbortCommand(uint32_t timestamp_ms);
 
 static void initPWMs();
 static void initADC();
@@ -23,6 +24,7 @@ static void initGPIOs();
 static void initUART();
 
 static void initValves();
+static void initHeaters();
 static void initTemperatureSensors();
 static void initTelecom();
 
@@ -78,7 +80,7 @@ FillingStationTelemetryPacket telemetryPacket = {
   }
 };
 
-void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc) {
+void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc) {
   fillStation.errorStatus.value  = 0;
   fillStation.status.value       = 0;
   fillStation.currentState       = FILLING_STATION_STATE_INIT;
@@ -91,9 +93,14 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   fillStation.hcrc   = hcrc;
 
   fillStation.valves = valves;
+  fillStation.heaters = heaters;
   fillStation.temperatureSensors = temperatureSensors;
   fillStation.telecom = telecom;
 
+  lastCommandTimestamp_ms = 0;
+  timeSinceLastCommand_ms = 0;
+
+  initHeaters();
   initValves();
   initTemperatureSensors();
   initTelecom();
@@ -105,6 +112,10 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
 }
 
 void FillingStation_tick(uint32_t timestamp_ms) {
+  timeSinceLastCommand_ms = timestamp_ms - lastCommandTimestamp_ms;
+  if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 30000) {
+    executeAbortCommand(HAL_GetTick());
+  }
   tickTemperatureSensors(timestamp_ms);
   tickValves(timestamp_ms);
   handleTelecommunication(timestamp_ms);
@@ -151,8 +162,7 @@ void executeUnsafe(uint32_t timestamp_ms) {
 }
 
 void executeAbort(uint32_t timestamp_ms) {
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], timestamp_ms);
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].open((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], timestamp_ms);
+  
 }
 
 void initPWMs() {
@@ -206,17 +216,19 @@ void initUART() {
 }
 
 void initValves() {
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT;
-  fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX];
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad = &fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX];
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT;
 
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX];
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT;
-  fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX];
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad = &fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX];
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT;
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT;
 
   for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     if (fillStation.valves[i].init == FUNCTION_NULL_POINTER) {
@@ -225,6 +237,23 @@ void initValves() {
     }
 
     fillStation.valves[i].init((struct Valve*)&fillStation.valves[i]);
+  }
+}
+
+void initHeaters() {
+  fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX].gpio = &fillStation.gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX];
+  fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX].gpio = &fillStation.gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX];
+
+  for (uint8_t i = 0; i < FILLING_STATION_HEATPAD_AMOUNT; i++) {
+    if (fillStation.heaters[i].init == FUNCTION_NULL_POINTER) {
+      fillStation.heaters[i].errorStatus.bits.nullFunctionPointer = 1;
+      continue;
+    }
+
+    fillStation.heaters[i].period_s = 10;
+    fillStation.heaters[i].currentDutyCycle_pct = 0;
+    fillStation.heaters[i].lastSwitchTimestamp_ms = 0;
+    fillStation.heaters[i].init((struct Heater*)&fillStation.heaters[i]);
   }
 }
 
@@ -280,7 +309,17 @@ void handleTelecommunication(uint32_t timestamp_ms) {
   }
 }
 
+void executeAbortCommand(uint32_t timestamp_ms) {
+  fillStation.currentState = FILLING_STATION_STATE_ABORT;
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX], timestamp_ms);
+  fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].open((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], timestamp_ms);
+}
+
 void handleCurrentCommand() {
+  if (currentCommand.fields.header.bits.commandCode == BOARD_COMMAND_CODE_ACK) {
+    handleCommandAcknowledge();
+  }
+
   switch (fillStation.currentState) {
     case FILLING_STATION_STATE_INIT:
       break;
@@ -301,10 +340,17 @@ void handleCurrentCommand() {
 void handleCurrentCommandSafe() {
   switch (currentCommand.fields.header.bits.commandCode) {
     case BOARD_COMMAND_CODE_ABORT:
-      fillStation.currentState = FILLING_STATION_STATE_ABORT;
+      executeAbortCommand(HAL_GetTick());
       break;
-    case BOARD_COMMAND_CODE_ACK:
-      handleCommandAcknowledge();
+    case FILLING_STATION_COMMAND_CODE_SET_FILL_VALVE_HEATER_POWER_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
+      }
+      break;
+    case FILLING_STATION_COMMAND_CODE_SET_DUMP_VALVE_HEATER_POWER_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
+      }
       break;
     case BOARD_COMMAND_CODE_UNSAFE:
       fillStation.currentState = FILLING_STATION_STATE_UNSAFE;
@@ -315,24 +361,29 @@ void handleCurrentCommandSafe() {
 void handleCurrentCommandUnsafe() {
   switch (currentCommand.fields.header.bits.commandCode) {
     case BOARD_COMMAND_CODE_ABORT:
-      fillStation.currentState = FILLING_STATION_STATE_ABORT;
-      break;
-    case BOARD_COMMAND_CODE_ACK:
-      handleCommandAcknowledge();
+      executeAbortCommand(HAL_GetTick());
       break;
     case BOARD_COMMAND_CODE_SAFE:
-      fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], HAL_GetTick());
-      fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], HAL_GetTick());
       fillStation.currentState = FILLING_STATION_STATE_SAFE;
+      break;
+    case FILLING_STATION_COMMAND_CODE_SET_FILL_VALVE_HEATER_POWER_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
+      }
+      break;
+    case FILLING_STATION_COMMAND_CODE_SET_DUMP_VALVE_HEATER_POWER_PCT:
+      if (currentCommand.fields.value <= 100) {
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
+      }
       break;
     case FILLING_STATION_COMMAND_CODE_OPEN_FILL_VALVE_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX], currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX], currentCommand.fields.value);
       }
       break;
     case FILLING_STATION_COMMAND_CODE_OPEN_DUMP_VALVE_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX], currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], currentCommand.fields.value);
       }
       break;
     default:
@@ -344,9 +395,6 @@ void handleCurrentCommandAbort() {
   switch (currentCommand.fields.header.bits.commandCode) {
     case BOARD_COMMAND_CODE_RESET:
       fillStation.currentState = FILLING_STATION_STATE_SAFE;
-      break;
-    case BOARD_COMMAND_CODE_ACK:
-      handleCommandAcknowledge();
       break;
     default:
       break;
@@ -368,7 +416,7 @@ void handleCommandAcknowledge() {
     }
   };
 
-  commandResponse.fields.crc = HAL_CRC_Calculate((CRC_HandleTypeDef*)fillStation.hcrc, commandResponse.data32, (sizeof(CommandResponse) / sizeof(uint32_t)) - sizeof(uint32_t));
+  commandResponse.fields.crc = HAL_CRC_Calculate((CRC_HandleTypeDef*)fillStation.hcrc, commandResponse.data32, (sizeof(CommandResponse) / sizeof(uint32_t)) - sizeof(uint8_t));
 
   HAL_UART_Transmit_DMA(fillStation.uart->externalHandle, commandResponse.data, sizeof(CommandResponse));
 }
@@ -379,7 +427,7 @@ void sendTelemetryPacket(uint32_t timestamp_ms) {
     filterTelemetryValues(i);
     telemetryPacket.fields.adcValues[i] = filteredTelemetryValues[i];
   }
-  telemetryPacket.fields.crc = HAL_CRC_Calculate(fillStation.hcrc, telemetryPacket.data32, (sizeof(FillingStationTelemetryPacket) / sizeof(uint32_t)) - sizeof(uint32_t));
+  telemetryPacket.fields.crc = HAL_CRC_Calculate(fillStation.hcrc, telemetryPacket.data32, (sizeof(FillingStationTelemetryPacket) / sizeof(uint32_t)) - sizeof(uint8_t));
   fillStation.telecom->sendData((struct Telecommunication*)fillStation.telecom, telemetryPacket.data, sizeof(FillingStationTelemetryPacket));
 }
 
@@ -387,15 +435,16 @@ void sendStatusPacket(uint32_t timestamp_ms) {
   statusPacket.fields.timestamp_ms = timestamp_ms;
   statusPacket.fields.errorStatus = fillStation.errorStatus;
   statusPacket.fields.status = fillStation.status;
-  statusPacket.fields.valveStatus[FILLING_STATION_NOS_VALVE_INDEX] = fillStation.valves[FILLING_STATION_NOS_VALVE_INDEX].status;
-  statusPacket.fields.valveStatus[FILLING_STATION_NOS_DUMP_VALVE_INDEX] = fillStation.valves[FILLING_STATION_NOS_DUMP_VALVE_INDEX].status;
+  statusPacket.fields.valveStatus[FILLING_STATION_FILL_VALVE_INDEX] = fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].status;
+  statusPacket.fields.valveStatus[FILLING_STATION_DUMP_VALVE_INDEX] = fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].status;
   statusPacket.fields.crc = 0;
 
+  statusPacket.fields.crc = HAL_CRC_Calculate(fillStation.hcrc, statusPacket.data32, (sizeof(FillingStationStatusPacket) / sizeof(uint32_t)) - sizeof(uint8_t));
   fillStation.telecom->sendData((struct Telecommunication*)fillStation.telecom, statusPacket.data, sizeof(FillingStationStatusPacket));
 }
 
 void getReceivedCommand() {
-  for (uint8_t i = 0; i < sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1; i++) {
+  for (uint16_t i = 0; i < sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1; i++) {
     currentCommand.data[0] = uart_rx_buffer[i];
     currentCommand.data[1] = uart_rx_buffer[i + 1];
     currentCommand.data[2] = uart_rx_buffer[i + 2];
@@ -403,10 +452,12 @@ void getReceivedCommand() {
     if (currentCommand.fields.header.bits.type == BOARD_COMMAND_BROADCAST_TYPE_CODE || 
         (currentCommand.fields.header.bits.type == BOARD_COMMAND_UNICAST_TYPE_CODE && 
          currentCommand.fields.header.bits.boardId == FILLING_STATION_BOARD_ID)) {
-      for (uint8_t j = 4; j < sizeof(BoardCommand); j++) {
+      for (uint16_t j = 4; j < sizeof(BoardCommand); j++) {
         currentCommand.data[j] = uart_rx_buffer[i + j];
         if (checkCommandCrc()) {
           i += sizeof(BoardCommand) - 1;
+          lastCommandTimestamp_ms = HAL_GetTick();
+          timeSinceLastCommand_ms = 0;
           handleCurrentCommand();
           break;
         }
@@ -424,8 +475,8 @@ void filterTelemetryValues(uint8_t index) {
 }
 
 uint8_t checkCommandCrc() {
-  if (HAL_CRC_Calculate(fillStation.hcrc, currentCommand.data32, (sizeof(BoardCommand) / sizeof(uint32_t)) - sizeof(uint32_t)) != currentCommand.fields.crc) {
-    //return 0;
+  if (HAL_CRC_Calculate(fillStation.hcrc, currentCommand.data32, (sizeof(BoardCommand) / sizeof(uint32_t)) - sizeof(uint8_t)) != currentCommand.fields.crc) {
+    return 0;
   }
   return 1;
 }
@@ -434,12 +485,5 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART1) {
     getReceivedCommand();
     HAL_UART_Receive_DMA(huart, uart_rx_buffer, sizeof(uart_rx_buffer));
-  }
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart->Instance == USART1) {
-    // Transmission complete callback
-    // Example: Prepare next data to send if needed
   }
 }

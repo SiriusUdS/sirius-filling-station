@@ -61,6 +61,7 @@ UART uart                               = {0};
 volatile USB usb                        = {0};
 
 Valve valves[FILLING_STATION_VALVE_AMOUNT]                                      = {0};
+Heater heaters[FILLING_STATION_HEATPAD_AMOUNT]                                  = {0};
 PressureSensor pressureSensors[FILLING_STATION_PRESSURE_SENSOR_AMOUNT]          = {0};
 TemperatureSensor temperatureSensors[FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT] = {0};
 Telecommunication telecom = {0};
@@ -84,7 +85,7 @@ static void setupADC();
 static void setupUART();
 
 static void setupValves();
-static void setupIgniter();
+static void setupHeaters();
 static void setupTemperatureSensors();
 static void setupPressureSensors();
 static void setupTelecommunication();
@@ -141,12 +142,12 @@ int main(void)
 
   // Setup Sensors/Devices
   setupValves();
-  setupIgniter();
+  setupHeaters();
   setupPressureSensors();
   setupTemperatureSensors();
   setupTelecommunication();
   
-  FillingStation_init(pwms, &adc, gpios, &uart, valves, temperatureSensors, &telecom, &hcrc);
+  FillingStation_init(pwms, &adc, gpios, &uart, valves, heaters, temperatureSensors, &telecom, &hcrc);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -603,7 +604,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_OUTPUT_EXT_FLASH_HOLD_Pin|GPIO_OUTPUT_EXT_FLASH_WP_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_OUTPUT_HEATPAD_1_Pin|GPIO_OUTPUT_HEATPAD_2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_OUTPUT_HEATPAD_FILL_Pin|GPIO_OUTPUT_HEATPAD_DUMP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, GPIO_OUTPUT_EMATCH_1_Pin|GPIO_OUTPUT_EMATCH_2_Pin, GPIO_PIN_RESET);
@@ -623,8 +624,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_OUTPUT_HEATPAD_1_Pin GPIO_OUTPUT_HEATPAD_2_Pin */
-  GPIO_InitStruct.Pin = GPIO_OUTPUT_HEATPAD_1_Pin|GPIO_OUTPUT_HEATPAD_2_Pin;
+  /*Configure GPIO pins : GPIO_OUTPUT_HEATPAD_FILL_Pin GPIO_OUTPUT_HEATPAD_DUMP_Pin */
+  GPIO_InitStruct.Pin = GPIO_OUTPUT_HEATPAD_FILL_Pin|GPIO_OUTPUT_HEATPAD_DUMP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -646,43 +647,55 @@ static void MX_GPIO_Init(void)
 // These should only link HAL to instance and set base function pointers
 
 void setupGPIOs() {
-  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_7;
-  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[FILLING_STATION_NOS_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_10;
+  gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_8;
-  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[FILLING_STATION_NOS_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_9;
+  gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_9;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX].pinNumber = GPIO_PIN_8;
+  gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_DUMP_VALVE_CLOSED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_10;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
-  gpios[FILLING_STATION_NOS_DUMP_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+  gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX].pinNumber = GPIO_PIN_7;
+  gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_DUMP_VALVE_OPENED_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+
+  gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX].externalHandle = GPIOC;
+  gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX].pinNumber = GPIO_PIN_9;
+  gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
+  gpios[FILLING_STATION_FILL_HEATPAD_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+
+  gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].externalHandle = GPIOC;
+  gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].pinNumber = GPIO_PIN_11;
+  gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
+  gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 }
 
 void setupPWMs() {
-  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
-  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
-  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].externalHandle = &htim4;
-  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].timer = TIM4;
-  pwms[FILLING_STATION_NOS_VALVE_PWM_INDEX].channel = TIM_CHANNEL_3;
+  pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
+  pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
+  pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX].externalHandle = &htim4;
+  pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX].timer = TIM4;
+  pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX].channel = TIM_CHANNEL_3;
 
-  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
-  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
-  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].externalHandle = &htim4;
-  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].timer = TIM4;
-  pwms[FILLING_STATION_NOS_DUMP_VALVE_PWM_INDEX].channel = TIM_CHANNEL_2;
+  pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX].errorStatus.bits.notInitialized = 1;
+  pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX].init = (PWM_init)PWMHAL_init;
+  pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX].externalHandle = &htim4;
+  pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX].timer = TIM4;
+  pwms[FILLING_STATION_DUMP_VALVE_PWM_INDEX].channel = TIM_CHANNEL_2;
 }
 
 void setupADC() {
@@ -740,8 +753,11 @@ void setupValves() {
   }
 }
 
-void setupIgniter() {
-
+void setupHeaters() {
+  for (uint8_t i = 0; i < FILLING_STATION_HEATPAD_AMOUNT; i++) {
+    heaters[i].errorStatus.bits.notInitialized = 1;
+    heaters[i].init = (Heater_init)FTVOGUEanpih0ztre_init;
+  }
 }
 
 void setupTemperatureSensors() {

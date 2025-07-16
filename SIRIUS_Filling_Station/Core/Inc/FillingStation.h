@@ -6,6 +6,8 @@
 #include "../sirius-embedded-common/Inc/Sensor/TemperatureSensor/NTC3950.h"
 #include "../sirius-embedded-common/sirius-headers-common/TemperatureSensor/TemperatureSensorPacket.h"
 
+#include "../sirius-embedded-common/Inc/Device/Heater/FTVOGUEanpih0ztre.h"
+
 #include "../sirius-embedded-common/Inc/Device/Valve/HBL388.h"
 
 #include "../sirius-embedded-common/Inc/Device/Storage/SDCard.h"
@@ -42,8 +44,8 @@
 #define FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT   (uint8_t)26
 #define FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT (uint8_t)54
 
-#define FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT   (uint8_t)54
-#define FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT (uint8_t)26
+#define FILLING_STATION_DUMP_VALVE_OPEN_DUTY_CYCLE_PCT   (uint8_t)20
+#define FILLING_STATION_DUMP_VALVE_CLOSED_DUTY_CYCLE_PCT (uint8_t)60
 
 typedef union {
   uint16_t values[ADC_BUFFER_SIZE_BYTES / sizeof(uint16_t)];
@@ -66,6 +68,7 @@ typedef struct {
   CRC_HandleTypeDef* hcrc;
 
   Valve*             valves;
+  Heater*            heaters;
   TemperatureSensor* temperatureSensors;
   PressureSensor*    pressureSensors;
   Telecommunication* telecom;
@@ -74,7 +77,7 @@ typedef struct {
 }
 FillingStation;
 
-extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc);
+extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc);
 
 extern void FillingStation_tick(uint32_t timestamp_ms);
 
