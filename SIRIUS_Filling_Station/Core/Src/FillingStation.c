@@ -9,7 +9,7 @@ uint32_t lastCommandTimestamp_ms = 0;
 
 uint16_t filteredTelemetryValues[16] = {0};
 
-uint8_t uart_rx_buffer[220] = {0};
+uint8_t uart_rx_buffer[132] = {0};
 
 static void executeInit(uint32_t timestamp_ms);
 static void executeSafe(uint32_t timestamp_ms);
@@ -368,12 +368,12 @@ void handleCurrentCommandUnsafe() {
       break;
     case FILLING_STATION_COMMAND_CODE_SET_FILL_VALVE_HEATER_POWER_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
       }
       break;
     case FILLING_STATION_COMMAND_CODE_SET_DUMP_VALVE_HEATER_POWER_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
       }
       break;
     case FILLING_STATION_COMMAND_CODE_OPEN_FILL_VALVE_PCT:
