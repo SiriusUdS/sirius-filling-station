@@ -10,7 +10,8 @@
 
 #include "../sirius-embedded-common/Inc/Device/Valve/HBL388.h"
 
-#include "../sirius-embedded-common/Inc/Device/Storage/SDCard.h"
+#include "../sirius-embedded-common/Inc/Device/Igniter/EstesC6.h"
+#include "../sirius-embedded-common/Inc/Device/Button/ButtonActiveHigh.h"
 
 #include "../sirius-embedded-common/Inc/LowLevelDriver/GPIO/GPIOHAL.h"
 #include "../sirius-embedded-common/Inc/LowLevelDriver/PWM/PWMHAL.h"
@@ -69,6 +70,8 @@ typedef struct {
 
   Valve*             valves;
   Heater*            heaters;
+  Igniter*           igniter;
+  Button*            emergencyButton;
   TemperatureSensor* temperatureSensors;
   PressureSensor*    pressureSensors;
   Telecommunication* telecom;
@@ -77,7 +80,7 @@ typedef struct {
 }
 FillingStation;
 
-extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc);
+extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton, CRC_HandleTypeDef* hcrc);
 
 extern void FillingStation_tick(uint32_t timestamp_ms);
 

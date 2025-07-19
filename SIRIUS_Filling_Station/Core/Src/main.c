@@ -66,7 +66,9 @@ Valve valves[FILLING_STATION_VALVE_AMOUNT]                                      
 Heater heaters[FILLING_STATION_HEATPAD_AMOUNT]                                  = {0};
 PressureSensor pressureSensors[FILLING_STATION_PRESSURE_SENSOR_AMOUNT]          = {0};
 TemperatureSensor temperatureSensors[FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT] = {0};
-Telecommunication telecom = {0};
+Telecommunication telecommunication                                             = {0};
+Igniter igniter                                                                 = {0};
+Button emergencyButton                                                          = {0};
 
 /* USER CODE END PV */
 
@@ -89,6 +91,8 @@ static void setupUART();
 
 static void setupValves();
 static void setupHeaters();
+static void setupIgniter();
+static void setupEmergencyButton();
 static void setupTemperatureSensors();
 static void setupPressureSensors();
 static void setupTelecommunication();
@@ -150,8 +154,10 @@ int main(void)
   setupPressureSensors();
   setupTemperatureSensors();
   setupTelecommunication();
+  setupIgniter();
+  setupEmergencyButton();
   
-  FillingStation_init(pwms, &adc, gpios, &uart, valves, heaters, temperatureSensors, &telecom, &hcrc);
+  FillingStation_init(pwms, &adc, gpios, &uart, valves, heaters, temperatureSensors, &telecommunication, &igniter, &emergencyButton, &hcrc);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -160,7 +166,8 @@ int main(void)
   while (1)
   { 
     HAL_IWDG_Refresh(&hiwdg);
-    FillingStation_tick(HAL_GetTick());
+    //FillingStation_tick(HAL_GetTick());
+    uint8_t buttonPressed = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -641,7 +648,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_OUTPUT_HEATPAD_FILL_Pin|GPIO_OUTPUT_HEATPAD_DUMP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, GPIO_OUTPUT_EMATCH_1_Pin|GPIO_OUTPUT_EMATCH_2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, GPIO_OUPUT_EMATCH_2_UNUSED_Pin|GPIO_OUTPUT_EMATCH_DUMP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : GPIO_INPUT_EMATCH_INDICATOR_2_Pin GPIO_INPUT_EMATCH_INDICATOR_1_Pin GPIO_INPUT_NOS_VALVE_SWITCH_CLOSED_Pin GPIO_INPUT_NOS_VALVE_SWITCH_OPENED_Pin
                            GPIO_INPUT_IPA_VALVE_SWITCH_CLOSED_Pin GPIO_INPUT_IPA_VALVE_SWITCH_OPENED_Pin */
@@ -665,8 +672,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_OUTPUT_EMATCH_1_Pin GPIO_OUTPUT_EMATCH_2_Pin */
-  GPIO_InitStruct.Pin = GPIO_OUTPUT_EMATCH_1_Pin|GPIO_OUTPUT_EMATCH_2_Pin;
+  /*Configure GPIO pins : GPIO_OUPUT_EMATCH_2_UNUSED_Pin GPIO_OUTPUT_EMATCH_DUMP_Pin */
+  GPIO_InitStruct.Pin = GPIO_OUPUT_EMATCH_2_UNUSED_Pin|GPIO_OUTPUT_EMATCH_DUMP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -716,6 +723,18 @@ void setupGPIOs() {
   gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].pinNumber = GPIO_PIN_11;
   gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
   gpios[FILLING_STATION_DUMP_HEATPAD_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].pinNumber = GPIO_PIN_1;
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
+
+  gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
+  gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX].externalHandle = GPIOE;
+  gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX].pinNumber = GPIO_PIN_5;
+  gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX].mode = GPIO_INPUT_MODE;
+  gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 }
 
 void setupPWMs() {
@@ -794,6 +813,16 @@ void setupHeaters() {
   }
 }
 
+void setupIgniter() {
+  igniter.errorStatus.bits.notInitialized = 1;
+  igniter.init = (Igniter_init)EstesC6_init;
+}
+
+void setupEmergencyButton() {
+  emergencyButton.errorStatus.bits.notInitialized = 1;
+  emergencyButton.init = (Button_init)ButtonActiveHigh_init;
+}
+
 void setupTemperatureSensors() {
   for (uint8_t i = 0; i < FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT; i++) {
     temperatureSensors[i].errorStatus.bits.notInitialized = 1;
@@ -802,8 +831,8 @@ void setupTemperatureSensors() {
 }
 
 void setupTelecommunication(){
-  telecom.errorStatus.bits.notInitialized = 1;
-  telecom.init = (Telecommunication_init)XBEE_init;
+  telecommunication.errorStatus.bits.notInitialized = 1;
+  telecommunication.init = (Telecommunication_init)XBEE_init;
 }
 
 void setupPressureSensors() {

@@ -35,6 +35,8 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/sirius-embedded-common/Src/Device/Valve/Valve.c
     ../../Core/sirius-embedded-common/Src/Device/Valve/HBL388.c
     ../../Core/sirius-embedded-common/Src/Device/Heater/FTVOGUEanpih0ztre.c
+    ../../Core/sirius-embedded-common/Src/Device/Button/ButtonActiveHigh.c
+    ../../Core/sirius-embedded-common/Src/Device/Igniter/EstesC6.c
     ../../Core/sirius-embedded-common/Src/Device/Telecommunication/Telecommunication.c
     ../../Core/sirius-embedded-common/Src/Device/Telecommunication/XBEE.c
     ../../Core/sirius-embedded-common/Src/LowLevelDriver/ADC/ADC12Channel.c

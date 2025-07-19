@@ -5,6 +5,7 @@ static volatile FillingStation fillStation;
 static volatile FillingStationADCBuffer adcBuffer = {0};
 
 uint32_t timeSinceLastCommand_ms = 0;
+uint32_t communicationRestartTimer_ms = 0;
 uint32_t lastCommandTimestamp_ms = 0;
 
 uint16_t filteredTelemetryValues[16] = {0};
@@ -27,6 +28,8 @@ static void initValves();
 static void initHeaters();
 static void initTemperatureSensors();
 static void initTelecom();
+static void initIgniter();
+static void initEmergencyButton();
 
 static void tickValves(uint32_t timestamp_ms);
 static void tickTemperatureSensors();
@@ -58,8 +61,8 @@ FillingStationStatusPacket statusPacket = {
       }
     },
     .timestamp_ms = 0,
-    .errorStatus = 0,
-    .status = 0,
+    .errorStatus = {0},
+    .status = {0},
     .valveStatus = {0},
     .padding = {0},
     .crc = 0
@@ -80,7 +83,7 @@ FillingStationTelemetryPacket telemetryPacket = {
   }
 };
 
-void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, CRC_HandleTypeDef* hcrc) {
+void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton,  CRC_HandleTypeDef* hcrc) {
   fillStation.errorStatus.value  = 0;
   fillStation.status.value       = 0;
   fillStation.currentState       = FILLING_STATION_STATE_INIT;
@@ -96,6 +99,8 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   fillStation.heaters = heaters;
   fillStation.temperatureSensors = temperatureSensors;
   fillStation.telecom = telecom;
+  fillStation.igniter = igniter;
+  fillStation.emergencyButton = emergencyButton;
 
   lastCommandTimestamp_ms = 0;
   timeSinceLastCommand_ms = 0;
@@ -104,6 +109,8 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   initValves();
   initTemperatureSensors();
   initTelecom();
+  initIgniter();
+  initEmergencyButton();
 
   initADC();
   initPWMs();
@@ -113,12 +120,21 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
 
 void FillingStation_tick(uint32_t timestamp_ms) {
   timeSinceLastCommand_ms = timestamp_ms - lastCommandTimestamp_ms;
-  if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 30000) {
+  if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 60000) {
     executeAbortCommand(HAL_GetTick());
+  }
+  else {
+    if (timeSinceLastCommand_ms > communicationRestartTimer_ms + 5000) {
+      communicationRestartTimer_ms = timeSinceLastCommand_ms;
+      HAL_UART_DMAStop(fillStation.uart->externalHandle);
+      HAL_UART_Receive_DMA(fillStation.uart->externalHandle, uart_rx_buffer, sizeof(uart_rx_buffer));
+    }
   }
   tickTemperatureSensors(timestamp_ms);
   tickValves(timestamp_ms);
   handleTelecommunication(timestamp_ms);
+  fillStation.emergencyButton->tick((struct Button*)fillStation.emergencyButton, timestamp_ms);
+  fillStation.igniter->tick((struct Igniter*)fillStation.igniter, timestamp_ms);
 
   FillingStation_execute(timestamp_ms);
 }
@@ -154,11 +170,19 @@ void executeInit(uint32_t timestamp_ms) {
 }
 
 void executeSafe(uint32_t timestamp_ms) {
-  
+  if (!fillStation.emergencyButton->status.bits.isPressed) {
+    fillStation.currentState = FILLING_STATION_STATE_ABORT;
+    executeAbortCommand(timestamp_ms);
+    return;
+  }
 }
 
 void executeUnsafe(uint32_t timestamp_ms) {
-  
+  if (!fillStation.emergencyButton->status.bits.isPressed) {
+    fillStation.currentState = FILLING_STATION_STATE_ABORT;
+    executeAbortCommand(timestamp_ms);
+    return;
+  }
 }
 
 void executeAbort(uint32_t timestamp_ms) {
@@ -218,7 +242,7 @@ void initUART() {
 void initValves() {
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].pwm = &fillStation.pwms[FILLING_STATION_FILL_VALVE_PWM_INDEX];
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].gpio[VALVE_GPIO_OPENED_INDEX] = &fillStation.gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX];
-  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_FILL_VALVE_OPENED_GPIO_INDEX];
+  fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].gpio[VALVE_GPIO_CLOSED_INDEX] = &fillStation.gpios[FILLING_STATION_FILL_VALVE_CLOSED_GPIO_INDEX];
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad = &fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX];
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].openDutyCycle_pct = FILLING_STATION_FILL_VALVE_OPEN_DUTY_CYCLE_PCT;
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].closeDutyCycle_pct = FILLING_STATION_FILL_VALVE_CLOSED_DUTY_CYCLE_PCT;
@@ -283,6 +307,31 @@ void initTelecom(){
   fillStation.telecom->uart = fillStation.uart;
 }
 
+void initIgniter() {
+  if (fillStation.igniter->init == FUNCTION_NULL_POINTER) {
+    fillStation.igniter->errorStatus.bits.nullFunctionPointer = 1;
+    return;
+  }
+
+  fillStation.igniter->gpio = &fillStation.gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX];
+  fillStation.igniter->init((struct Igniter*)fillStation.igniter);
+}
+
+void initEmergencyButton() {
+  if (fillStation.emergencyButton->init == FUNCTION_NULL_POINTER) {
+    fillStation.emergencyButton->errorStatus.bits.nullFunctionPointer = 1;
+    return;
+  }
+
+  fillStation.emergencyButton->gpio = &fillStation.gpios[FILLING_STATION_BUTTON_EMERGENCY_STOP_GPIO_INDEX];
+  fillStation.emergencyButton->init((struct Button*)fillStation.emergencyButton);
+  fillStation.emergencyButton->debounceTargetReadCount = 15;
+  fillStation.emergencyButton->debounceCurrentReadCount = 0;
+  fillStation.emergencyButton->delayBetweenReads_ms = 4;
+
+  fillStation.emergencyButton->status.bits.isPressed = 1;
+}
+
 void tickValves(uint32_t timestamp_ms) {
   for (uint8_t i = 0; i < FILLING_STATION_VALVE_AMOUNT; i++) {
     fillStation.valves[i].tick((struct Valve*)&fillStation.valves[i], timestamp_ms);
@@ -313,6 +362,9 @@ void executeAbortCommand(uint32_t timestamp_ms) {
   fillStation.currentState = FILLING_STATION_STATE_ABORT;
   fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].close((struct Valve*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX], timestamp_ms);
   fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].open((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], timestamp_ms);
+  fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX].setDutyCycle_pct((struct Heater*)&fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX], 0);
+  fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX].setDutyCycle_pct((struct Heater*)&fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX], 0);
+  fillStation.igniter->ignite((struct Igniter*)&fillStation.igniter, timestamp_ms);
 }
 
 void handleCurrentCommand() {
@@ -378,12 +430,12 @@ void handleCurrentCommandUnsafe() {
       break;
     case FILLING_STATION_COMMAND_CODE_OPEN_FILL_VALVE_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX], currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX], currentCommand.fields.value, HAL_GetTick());
       }
       break;
     case FILLING_STATION_COMMAND_CODE_OPEN_DUMP_VALVE_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], currentCommand.fields.value, HAL_GetTick());
       }
       break;
     default:
@@ -458,6 +510,7 @@ void getReceivedCommand() {
           i += sizeof(BoardCommand) - 1;
           lastCommandTimestamp_ms = HAL_GetTick();
           timeSinceLastCommand_ms = 0;
+          communicationRestartTimer_ms = 0;
           handleCurrentCommand();
           break;
         }
