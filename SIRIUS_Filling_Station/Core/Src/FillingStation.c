@@ -112,6 +112,7 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   fillStation.storageDevices = storageDevices;
 
   lastCommandTimestamp_ms = 0;
+  communicationRestartTimer_ms = 0;
   timeSinceLastCommand_ms = 0;
 
   fillStation.sdCardBuffer = sdCardBuffer;
