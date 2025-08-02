@@ -2,11 +2,16 @@
 
 static volatile FillingStation fillStation;
 
-static volatile FillingStationADCBuffer adcBuffer = {0};
+//static volatile FillingStationADCBuffer adcBuffer = {0};
+
+uint32_t adcHalfFullTimestamp_ms = 0;
+uint32_t adcFullTimestamp_ms = 0;
 
 uint32_t timeSinceLastCommand_ms = 0;
 uint32_t communicationRestartTimer_ms = 0;
 uint32_t lastCommandTimestamp_ms = 0;
+
+uint8_t activateStorageFlag = 0;
 
 uint16_t filteredTelemetryValues[16] = {0};
 
@@ -30,11 +35,13 @@ static void initTemperatureSensors();
 static void initTelecom();
 static void initIgniter();
 static void initEmergencyButton();
+static void initStorageDevices();
 
 static void tickValves(uint32_t timestamp_ms);
 static void tickTemperatureSensors();
 
 static void handleTelecommunication(uint32_t timestamp_ms);
+static void handleDataStorage(uint32_t timestamp_ms);
 
 static void handleCurrentCommand();
 static void handleCurrentCommandSafe();
@@ -83,7 +90,7 @@ FillingStationTelemetryPacket telemetryPacket = {
   }
 };
 
-void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton,  CRC_HandleTypeDef* hcrc) {
+void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton,Storage* storageDevices, volatile EngineSDCardBuffer* sdCardBuffer,  CRC_HandleTypeDef* hcrc) {
   fillStation.errorStatus.value  = 0;
   fillStation.status.value       = 0;
   fillStation.currentState       = FILLING_STATION_STATE_INIT;
@@ -102,8 +109,16 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   fillStation.igniter = igniter;
   fillStation.emergencyButton = emergencyButton;
 
+  fillStation.storageDevices = storageDevices;
+
   lastCommandTimestamp_ms = 0;
   timeSinceLastCommand_ms = 0;
+
+  fillStation.sdCardBuffer = sdCardBuffer;
+
+  // FUCKING REMOVE THIS
+  activateStorageFlag = 1;
+  fillStation.isStoringData = 1;
 
   initHeaters();
   initValves();
@@ -111,6 +126,7 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
   initTelecom();
   initIgniter();
   initEmergencyButton();
+  initStorageDevices();
 
   initADC();
   initPWMs();
@@ -120,19 +136,25 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
 
 void FillingStation_tick(uint32_t timestamp_ms) {
   timeSinceLastCommand_ms = timestamp_ms - lastCommandTimestamp_ms;
-  if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 60000) {
+  /*if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 60000) {
     executeAbortCommand(HAL_GetTick());
-  }
-  else {
-    if (timeSinceLastCommand_ms > communicationRestartTimer_ms + 5000) {
-      communicationRestartTimer_ms = timeSinceLastCommand_ms;
-      HAL_UART_DMAStop(fillStation.uart->externalHandle);
-      HAL_UART_Receive_DMA(fillStation.uart->externalHandle, uart_rx_buffer, sizeof(uart_rx_buffer));
+  }*/
+
+  if (timeSinceLastCommand_ms > communicationRestartTimer_ms + 3000) {
+    communicationRestartTimer_ms = timeSinceLastCommand_ms;
+    if (__HAL_UART_GET_FLAG((UART_HandleTypeDef*)fillStation.uart->externalHandle, UART_FLAG_ORE)) {
+      __HAL_UART_CLEAR_OREFLAG((UART_HandleTypeDef*)fillStation.uart->externalHandle);
     }
+    HAL_UART_DMAStop(fillStation.uart->externalHandle);
+    HAL_UART_Receive_DMA(fillStation.uart->externalHandle, uart_rx_buffer, sizeof(uart_rx_buffer));
   }
+
   tickTemperatureSensors(timestamp_ms);
   tickValves(timestamp_ms);
+  fillStation.status.bits.state = fillStation.currentState;
   handleTelecommunication(timestamp_ms);
+  handleDataStorage(timestamp_ms);
+  fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX].tick((struct Storage*)&fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX], timestamp_ms);
   fillStation.emergencyButton->tick((struct Button*)fillStation.emergencyButton, timestamp_ms);
   fillStation.igniter->tick((struct Igniter*)fillStation.igniter, timestamp_ms);
 
@@ -170,7 +192,7 @@ void executeInit(uint32_t timestamp_ms) {
 }
 
 void executeSafe(uint32_t timestamp_ms) {
-  if (!fillStation.emergencyButton->status.bits.isPressed) {
+  if (fillStation.emergencyButton->status.bits.isPressed) {
     fillStation.currentState = FILLING_STATION_STATE_ABORT;
     executeAbortCommand(timestamp_ms);
     return;
@@ -178,7 +200,7 @@ void executeSafe(uint32_t timestamp_ms) {
 }
 
 void executeUnsafe(uint32_t timestamp_ms) {
-  if (!fillStation.emergencyButton->status.bits.isPressed) {
+  if (fillStation.emergencyButton->status.bits.isPressed) {
     fillStation.currentState = FILLING_STATION_STATE_ABORT;
     executeAbortCommand(timestamp_ms);
     return;
@@ -205,7 +227,7 @@ void initADC() {
     fillStation.adc->errorStatus.bits.nullFunctionPointer = 1;
   }
   else {
-    fillStation.adc->init((struct ADC12*)fillStation.adc, adcBuffer.values, sizeof(adcBuffer), FILLING_STATION_ADC_CHANNEL_AMOUNT);
+    fillStation.adc->init((struct ADC12*)fillStation.adc, fillStation.sdCardBuffer->values, sizeof(EngineSDCardBuffer), FILLING_STATION_ADC_CHANNEL_AMOUNT);
   }
 
   for (uint8_t i = 0; i < FILLING_STATION_ADC_CHANNEL_AMOUNT; i++) {
@@ -307,12 +329,24 @@ void initTelecom(){
   fillStation.telecom->uart = fillStation.uart;
 }
 
+void initStorageDevices() {
+  for (uint8_t i = 0; i < 1; i++) {
+    if (fillStation.storageDevices[i].init == FUNCTION_NULL_POINTER) {
+      fillStation.storageDevices[i].errorStatus.bits.nullFunctionPointer = 1;
+      continue;
+    }
+
+    fillStation.storageDevices[i].init((struct Storage*)&fillStation.storageDevices[i]);
+  }
+}
+
 void initIgniter() {
   if (fillStation.igniter->init == FUNCTION_NULL_POINTER) {
     fillStation.igniter->errorStatus.bits.nullFunctionPointer = 1;
     return;
   }
 
+  fillStation.igniter->igniteDuration_ms = 3500;
   fillStation.igniter->gpio = &fillStation.gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX];
   fillStation.igniter->init((struct Igniter*)fillStation.igniter);
 }
@@ -329,7 +363,7 @@ void initEmergencyButton() {
   fillStation.emergencyButton->debounceCurrentReadCount = 0;
   fillStation.emergencyButton->delayBetweenReads_ms = 4;
 
-  fillStation.emergencyButton->status.bits.isPressed = 1;
+  fillStation.emergencyButton->status.bits.isPressed = 0;
 }
 
 void tickValves(uint32_t timestamp_ms) {
@@ -341,6 +375,65 @@ void tickValves(uint32_t timestamp_ms) {
 void tickTemperatureSensors() {
   for (uint8_t i = 0; i < FILLING_STATION_TEMPERATURE_SENSOR_AMOUNT; i++) {
     fillStation.temperatureSensors[i].tick((struct TemperatureSensor*)&fillStation.temperatureSensors[i]);
+  }
+}
+
+void handleDataStorage(uint32_t timestamp_ms) {
+  if (fillStation.adc->status.bits.dmaFull) {
+    if (fillStation.isStoringData) {
+      fillStation.sdCardBuffer->sdData[1].footer.timestamp_ms = adcFullTimestamp_ms;
+      fillStation.sdCardBuffer->sdData[1].footer.status = fillStation.status.value;
+      fillStation.sdCardBuffer->sdData[1].footer.errorStatus = fillStation.errorStatus.value;
+      fillStation.sdCardBuffer->sdData[1].footer.valveStatus[0] = fillStation.valves[0].status.value;
+      fillStation.sdCardBuffer->sdData[1].footer.valveStatus[1] = fillStation.valves[1].status.value;
+      fillStation.sdCardBuffer->sdData[1].footer.valveErrorStatus[0] = fillStation.valves[0].errorStatus.value;
+      fillStation.sdCardBuffer->sdData[1].footer.valveErrorStatus[1] = fillStation.valves[1].errorStatus.value;
+      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = currentCommand.fields.header.value;
+      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = 0;
+      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = 0;
+
+      for (uint8_t i = 0; i < 32;i++) {
+        fillStation.sdCardBuffer->sdData[1].footer.padding[i] = 0;
+      }
+
+      for (uint8_t i = 0; i < 16;i++) {
+        fillStation.sdCardBuffer->sdData[1].footer.signature[i] = 0xFFFFFFFF;
+      }
+
+      fillStation.sdCardBuffer->sdData[1].footer.crc = HAL_CRC_Calculate(fillStation.hcrc, (uint32_t*)&fillStation.sdCardBuffer->sdData[1], (sizeof(EngineSDFormattedData) / sizeof(uint32_t)) -  sizeof(uint8_t));
+      fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX].store((struct Storage*)&fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX], STORAGE_DATA_FAST_DESTINATION, (uint8_t*)(fillStation.sdCardBuffer->hex + (sizeof(EngineSDCardBuffer) / 2)), (sizeof(EngineSDCardBuffer) / 2));
+    }
+    
+    fillStation.adc->status.bits.dmaFull = 0;
+  }
+  
+  if (fillStation.adc->status.bits.dmaHalfFull) {
+    if (fillStation.isStoringData) {
+      fillStation.sdCardBuffer->sdData[0].footer.timestamp_ms = adcFullTimestamp_ms;
+      fillStation.sdCardBuffer->sdData[0].footer.status = fillStation.status.value;
+      fillStation.sdCardBuffer->sdData[0].footer.errorStatus = fillStation.errorStatus.value;
+      fillStation.sdCardBuffer->sdData[0].footer.valveStatus[0] = fillStation.valves[0].status.value;
+      fillStation.sdCardBuffer->sdData[0].footer.valveStatus[1] = fillStation.valves[1].status.value;
+      fillStation.sdCardBuffer->sdData[0].footer.valveErrorStatus[0] = fillStation.valves[0].errorStatus.value;
+      fillStation.sdCardBuffer->sdData[0].footer.valveErrorStatus[1] = fillStation.valves[1].errorStatus.value;
+      // Those are the BoardCommand
+      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = currentCommand.fields.header.value;
+      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = 0;
+      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = 0;
+
+      for (uint8_t i = 0; i < 32;i++) {
+        fillStation.sdCardBuffer->sdData[0].footer.padding[i] = 0;
+      }
+
+      for (uint8_t i = 0; i < 16;i++) {
+        fillStation.sdCardBuffer->sdData[0].footer.signature[i] = 0xFFFFFFFF;
+      }
+
+      fillStation.sdCardBuffer->sdData[0].footer.crc = HAL_CRC_Calculate(fillStation.hcrc, (uint32_t*)&fillStation.sdCardBuffer->sdData[0], (sizeof(EngineSDFormattedData) / sizeof(uint32_t)) -  sizeof(uint8_t));
+      fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX].store((struct Storage*)&fillStation.storageDevices[ENGINE_STORAGE_SD_CARD_INDEX], STORAGE_DATA_FAST_DESTINATION, (uint8_t*)(fillStation.sdCardBuffer->hex), (sizeof(EngineSDCardBuffer) / 2));
+    }
+    
+    fillStation.adc->status.bits.dmaHalfFull = 0;
   }
 }
 
@@ -364,7 +457,7 @@ void executeAbortCommand(uint32_t timestamp_ms) {
   fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].open((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], timestamp_ms);
   fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX].setDutyCycle_pct((struct Heater*)&fillStation.heaters[FILLING_STATION_FILL_VALVE_HEATPAD_INDEX], 0);
   fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX].setDutyCycle_pct((struct Heater*)&fillStation.heaters[FILLING_STATION_DUMP_VALVE_HEATPAD_INDEX], 0);
-  fillStation.igniter->ignite((struct Igniter*)&fillStation.igniter, timestamp_ms);
+  fillStation.igniter->ignite((struct Igniter*)fillStation.igniter, timestamp_ms);
 }
 
 void handleCurrentCommand() {
@@ -396,12 +489,12 @@ void handleCurrentCommandSafe() {
       break;
     case FILLING_STATION_COMMAND_CODE_SET_FILL_VALVE_HEATER_POWER_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].heatpad, currentCommand.fields.value);
       }
       break;
     case FILLING_STATION_COMMAND_CODE_SET_DUMP_VALVE_HEATER_POWER_PCT:
       if (currentCommand.fields.value <= 100) {
-        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
+        fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad->setDutyCycle_pct((struct Heater*)fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].heatpad, currentCommand.fields.value);
       }
       break;
     case BOARD_COMMAND_CODE_UNSAFE:
@@ -487,6 +580,7 @@ void sendStatusPacket(uint32_t timestamp_ms) {
   statusPacket.fields.timestamp_ms = timestamp_ms;
   statusPacket.fields.errorStatus = fillStation.errorStatus;
   statusPacket.fields.status = fillStation.status;
+  statusPacket.fields.timeSinceLastCommand_ms = timeSinceLastCommand_ms;
   statusPacket.fields.valveStatus[FILLING_STATION_FILL_VALVE_INDEX] = fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].status;
   statusPacket.fields.valveStatus[FILLING_STATION_DUMP_VALVE_INDEX] = fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].status;
   statusPacket.fields.crc = 0;
@@ -508,6 +602,7 @@ void getReceivedCommand() {
         currentCommand.data[j] = uart_rx_buffer[i + j];
         if (checkCommandCrc()) {
           i += sizeof(BoardCommand) - 1;
+          statusPacket.fields.lastReceivedCommandCode = currentCommand.fields.header.bits.commandCode;
           lastCommandTimestamp_ms = HAL_GetTick();
           timeSinceLastCommand_ms = 0;
           communicationRestartTimer_ms = 0;
@@ -522,7 +617,7 @@ void getReceivedCommand() {
 void filterTelemetryValues(uint8_t index) {
   uint32_t filteredValue = 0;
   for (uint16_t i = 0; i < 64; i++) {
-    filteredValue += adcBuffer.values[index + i * FILTER_TELEMETRY_OFFSET];
+    filteredValue += fillStation.sdCardBuffer->values[index + i * FILTER_TELEMETRY_OFFSET];
   }
   filteredTelemetryValues[index] = filteredValue >> 6;
 }
@@ -532,6 +627,26 @@ uint8_t checkCommandCrc() {
     return 0;
   }
   return 1;
+}
+
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc) {
+  if (fillStation.adc->status.bits.dmaHalfFull == 0) {
+    fillStation.adc->status.bits.dmaHalfFull = 1;
+    adcHalfFullTimestamp_ms = HAL_GetTick();
+    if (activateStorageFlag) {
+      fillStation.isStoringData = 1;
+    }
+    else {
+      fillStation.isStoringData = 0;
+    }
+  }
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  if (fillStation.adc->status.bits.dmaFull == 0) {
+    fillStation.adc->status.bits.dmaFull = 1;
+    adcFullTimestamp_ms = HAL_GetTick();
+  }
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {

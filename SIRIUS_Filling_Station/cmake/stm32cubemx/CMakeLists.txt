@@ -34,6 +34,8 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/sirius-embedded-common/Src/Sensor/PressureSensor/ETM375.c
     ../../Core/sirius-embedded-common/Src/Device/Valve/Valve.c
     ../../Core/sirius-embedded-common/Src/Device/Valve/HBL388.c
+    ../../Core/sirius-embedded-common/Src/Device/Storage/Storage.c
+    ../../Core/sirius-embedded-common/Src/Device/Storage/SDCard.c
     ../../Core/sirius-embedded-common/Src/Device/Heater/FTVOGUEanpih0ztre.c
     ../../Core/sirius-embedded-common/Src/Device/Button/ButtonActiveHigh.c
     ../../Core/sirius-embedded-common/Src/Device/Igniter/EstesC6.c
@@ -51,6 +53,14 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/sirius-embedded-common/Src/LowLevelDriver/PWM/PWMHAL.c
     ../../Core/Src/FillingStation.c
     ../../Core/Src/main.c
+    ../../FATFS/App/fatfs.c
+    ../../FATFS/Target/sd_diskio.c
+    ../../FATFS/Target/bsp_driver_sd.c
+    ../../Middlewares/Third_Party/FatFs/src/ff.c
+    ../../Middlewares/Third_Party/FatFs/src/diskio.c
+    ../../Middlewares/Third_Party/FatFs/src/option/ccsbcs.c
+    ../../FATFS/Target/fatfs_platform.c
+    ../../Middlewares/Third_Party/FatFs/src/ff_gen_drv.c
     ../../Core/Src/stm32f4xx_it.c
     ../../Core/Src/stm32f4xx_hal_msp.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c
@@ -76,10 +86,12 @@ target_sources(stm32cubemx INTERFACE
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_hcd.c
+    ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_sd.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_crc.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_iwdg.c
     ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd_ex.c
+    ../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_sdmmc.c
     ../../Core/Src/system_stm32f4xx.c
     ../../Core/Src/sysmem.c
     ../../Core/Src/syscalls.c

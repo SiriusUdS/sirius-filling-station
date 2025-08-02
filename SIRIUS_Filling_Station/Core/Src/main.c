@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -47,6 +48,10 @@ CRC_HandleTypeDef hcrc;
 
 IWDG_HandleTypeDef hiwdg;
 
+SD_HandleTypeDef hsd;
+DMA_HandleTypeDef hdma_sdio_rx;
+DMA_HandleTypeDef hdma_sdio_tx;
+
 SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim4;
@@ -70,6 +75,10 @@ Telecommunication telecommunication                                             
 Igniter igniter                                                                 = {0};
 Button emergencyButton                                                          = {0};
 
+Storage storageDevices[1] = {0};
+
+static volatile EngineSDCardBuffer sdCardBuffer = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +91,7 @@ static void MX_TIM4_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_CRC_Init(void);
 static void MX_IWDG_Init(void);
+static void MX_SDIO_SD_Init(void);
 /* USER CODE BEGIN PFP */
 
 static void setupGPIOs();
@@ -96,6 +106,7 @@ static void setupEmergencyButton();
 static void setupTemperatureSensors();
 static void setupPressureSensors();
 static void setupTelecommunication();
+static void setupStorageDevices();
 
 /* USER CODE END PFP */
 
@@ -140,6 +151,8 @@ int main(void)
   MX_SPI2_Init();
   MX_CRC_Init();
   MX_IWDG_Init();
+  MX_SDIO_SD_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
   // Setup Peripherals
@@ -156,8 +169,9 @@ int main(void)
   setupTelecommunication();
   setupIgniter();
   setupEmergencyButton();
+  setupStorageDevices();
   
-  FillingStation_init(pwms, &adc, gpios, &uart, valves, heaters, temperatureSensors, &telecommunication, &igniter, &emergencyButton, &hcrc);
+  FillingStation_init(pwms, &adc, gpios, &uart, valves, heaters, temperatureSensors, &telecommunication, &igniter, &emergencyButton,storageDevices, &sdCardBuffer, &hcrc);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -166,8 +180,8 @@ int main(void)
   while (1)
   { 
     HAL_IWDG_Refresh(&hiwdg);
-    //FillingStation_tick(HAL_GetTick());
-    uint8_t buttonPressed = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5);
+    FillingStation_tick(HAL_GetTick());
+    //uint8_t buttonPressed = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -198,9 +212,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 144;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-  RCC_OscInitStruct.PLL.PLLQ = 6;
+  RCC_OscInitStruct.PLL.PLLN = 96;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -215,7 +229,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -242,7 +256,7 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = ENABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
@@ -262,7 +276,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_144CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -463,6 +477,41 @@ static void MX_IWDG_Init(void)
 }
 
 /**
+  * @brief SDIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SDIO_SD_Init(void)
+{
+
+  /* USER CODE BEGIN SDIO_Init 0 */
+
+  /* USER CODE END SDIO_Init 0 */
+
+  /* USER CODE BEGIN SDIO_Init 1 */
+
+  /* USER CODE END SDIO_Init 1 */
+  hsd.Instance = SDIO;
+  hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
+  hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
+  hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
+  hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
+  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE;
+  hsd.Init.ClockDiv = 2;
+  /* USER CODE BEGIN SDIO_Init 2 */
+  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
+  if (HAL_SD_Init(&hsd) != HAL_OK) {
+    Error_Handler();
+  }
+
+  if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK) {
+    Error_Handler();
+  }
+  /* USER CODE END SDIO_Init 2 */
+
+}
+
+/**
   * @brief SPI2 Initialization Function
   * @param None
   * @retval None
@@ -616,6 +665,12 @@ static void MX_DMA_Init(void)
   /* DMA2_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  /* DMA2_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+  /* DMA2_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
   /* DMA2_Stream7_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
@@ -664,6 +719,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SD_CARD_DETECT_Pin */
+  GPIO_InitStruct.Pin = SD_CARD_DETECT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(SD_CARD_DETECT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : GPIO_OUTPUT_HEATPAD_FILL_Pin GPIO_OUTPUT_HEATPAD_DUMP_Pin */
   GPIO_InitStruct.Pin = GPIO_OUTPUT_HEATPAD_FILL_Pin|GPIO_OUTPUT_HEATPAD_DUMP_Pin;
@@ -726,7 +787,7 @@ void setupGPIOs() {
 
   gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].errorStatus.bits.notInitialized = 1;
   gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].externalHandle = GPIOE;
-  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].pinNumber = GPIO_PIN_1;
+  gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].pinNumber = GPIO_PIN_0;
   gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].mode = GPIO_OUTPUT_MODE;
   gpios[FILLING_STATION_IGNITER_DUMP_GPIO_INDEX].init = (GPIO_init)GPIOHAL_init;
 
@@ -842,6 +903,16 @@ void setupPressureSensors() {
   }
 }
 
+void setupStorageDevices() {
+  for (uint8_t i = 0; i < 1; i++) {
+    storageDevices[i].errorStatus.bits.notInitialized = 1;
+  }
+  
+  storageDevices[0].init = (Storage_init)SDCard_init;
+  storageDevices[0].externalInstance = &hsd;
+  storageDevices[0].fs = &SDFatFS;
+  storageDevices[0].volumePath = SDPath;
+}
 /* USER CODE END 4 */
 
 /**

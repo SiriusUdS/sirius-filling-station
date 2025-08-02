@@ -356,6 +356,9 @@
           <state>$PROJ_DIR$/../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy</state>
           <state>$PROJ_DIR$/../Drivers/CMSIS/Device/ST/STM32F4xx/Include</state>
           <state>$PROJ_DIR$/../Drivers/CMSIS/Include</state>
+          <state>$PROJ_DIR$/../FATFS/Target</state>
+          <state>$PROJ_DIR$/../FATFS/App</state>
+          <state>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src</state>
         </option>
         <option>
           <name>CCStdIncCheck</name>
@@ -1089,6 +1092,27 @@
           <name>$PROJ_DIR$/../Core/Src/stm32f4xx_hal_msp.c</name>
         </file>
       </group>
+      <group>
+        <name>FATFS</name>
+        <group>
+          <name>Target</name>
+          <file>
+            <name>$PROJ_DIR$/../FATFS/Target/bsp_driver_sd.c</name>
+          </file>
+          <file>
+            <name>$PROJ_DIR$/../FATFS/Target/sd_diskio.c</name>
+          </file>
+          <file>
+            <name>$PROJ_DIR$/../FATFS/Target/fatfs_platform.c</name>
+          </file>
+        </group>
+        <group>
+          <name>App</name>
+          <file>
+            <name>$PROJ_DIR$/../FATFS/App/fatfs.c</name>
+          </file>
+        </group>
+      </group>
     </group>
   </group>
   <group>
@@ -1150,6 +1174,12 @@
         <name>$PROJ_DIR$/../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_iwdg.c</name>
       </file>
       <file>
+        <name>$PROJ_DIR$/../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_sdmmc.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$/../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_sd.c</name>
+      </file>
+      <file>
         <name>$PROJ_DIR$/../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_spi.c</name>
       </file>
       <file>
@@ -1166,6 +1196,27 @@
       <name>CMSIS</name>
       <file>
         <name>$PROJ_DIR$/../Core/Src/system_stm32f4xx.c</name>
+      </file>
+    </group>
+  </group>
+  <group>
+    <name>Middlewares</name>
+    <group>
+      <name>FatFs</name>
+      <file>
+        <name>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src/diskio.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src/ff.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src/ff_gen_drv.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src/option/syscall.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$/../Middlewares/Third_Party/FatFs/src/option/ccsbcs.c</name>
       </file>
     </group>
   </group>

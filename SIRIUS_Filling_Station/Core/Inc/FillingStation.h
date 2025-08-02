@@ -30,6 +30,9 @@
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/CommandResponse.h"
 #include "../sirius-embedded-common/Inc/Device/Telecommunication/XBEE.h"
 #include "../sirius-embedded-common/sirius-headers-common/Telecommunication/PacketHeaderVariable.h"
+#include "../sirius-embedded-common/Inc/Device/Storage/SDCard.h"
+#include "../sirius-embedded-common/Inc/Device/Storage/Storage.h"
+#include "../sirius-embedded-common/sirius-headers-common/Engine/EngineSDBuffers.h"
 
 #include "stm32f4xx_hal.h"
 
@@ -37,7 +40,7 @@
 
 #define ADC_BUFFER_SIZE_BYTES 0x10000
 
-#define TIME_BETWEEN_TELEMETRY_PACKETS_MS        (uint8_t)91
+#define TIME_BETWEEN_TELEMETRY_PACKETS_MS        (uint8_t)180
 #define TELEMETRY_PACKETS_BETWEEN_STATUS_PACKETS (uint8_t)5
 
 #define FILTER_TELEMETRY_OFFSET (((sizeof(FillingStationADCBuffer) / 2)/sizeof(uint16_t)) / 64)
@@ -68,19 +71,25 @@ typedef struct {
 
   CRC_HandleTypeDef* hcrc;
 
+  uint8_t isStoringData;
+
   Valve*             valves;
   Heater*            heaters;
   Igniter*           igniter;
   Button*            emergencyButton;
+  Storage*           storageDevices;
   TemperatureSensor* temperatureSensors;
   PressureSensor*    pressureSensors;
   Telecommunication* telecom;
+
+  volatile           EngineSDCardBuffer* sdCardBuffer;
+
   uint32_t           telecommunicationTimestampTarget_ms;
   uint8_t            telecommunicationTelemetryPacketCount;
 }
 FillingStation;
 
-extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton, CRC_HandleTypeDef* hcrc);
+extern void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* valves, Heater* heaters, TemperatureSensor* temperatureSensors, Telecommunication* telecom, Igniter* igniter, Button* emergencyButton, Storage* storageDevices, volatile EngineSDCardBuffer* sdCardBuffer, CRC_HandleTypeDef* hcrc);
 
 extern void FillingStation_tick(uint32_t timestamp_ms);
 
