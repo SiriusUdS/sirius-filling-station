@@ -117,10 +117,6 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
 
   fillStation.sdCardBuffer = sdCardBuffer;
 
-  // FUCKING REMOVE THIS
-  activateStorageFlag = 1;
-  fillStation.isStoringData = 1;
-
   initHeaters();
   initValves();
   initTemperatureSensors();
@@ -198,6 +194,7 @@ void executeSafe(uint32_t timestamp_ms) {
     executeAbortCommand(timestamp_ms);
     return;
   }
+  activateStorageFlag = 0;
 }
 
 void executeUnsafe(uint32_t timestamp_ms) {
@@ -209,7 +206,7 @@ void executeUnsafe(uint32_t timestamp_ms) {
 }
 
 void executeAbort(uint32_t timestamp_ms) {
-  
+  activateStorageFlag = 0;
 }
 
 void initPWMs() {
@@ -531,6 +528,9 @@ void handleCurrentCommandUnsafe() {
       if (currentCommand.fields.value <= 100) {
         fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].setDutyCycle((struct Valve*)&fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX], currentCommand.fields.value, HAL_GetTick());
       }
+      break;
+    case ENGINE_COMMAND_CODE_FIRE_IGNITER:
+      activateStorageFlag = 1;
       break;
     default:
       break;
