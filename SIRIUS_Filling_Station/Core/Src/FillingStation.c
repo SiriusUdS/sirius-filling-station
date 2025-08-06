@@ -588,6 +588,8 @@ void sendStatusPacket(uint32_t timestamp_ms) {
   statusPacket.fields.timeSinceLastCommand_ms = timeSinceLastCommand_ms;
   statusPacket.fields.valveStatus[FILLING_STATION_FILL_VALVE_INDEX] = fillStation.valves[FILLING_STATION_FILL_VALVE_INDEX].status;
   statusPacket.fields.valveStatus[FILLING_STATION_DUMP_VALVE_INDEX] = fillStation.valves[FILLING_STATION_DUMP_VALVE_INDEX].status;
+  statusPacket.fields.storageStatus = fillStation.storageDevices[0].status;
+  statusPacket.fields.storageErrorStatus = fillStation.storageDevices[0].errorStatus;
   statusPacket.fields.crc = 0;
 
   statusPacket.fields.crc = HAL_CRC_Calculate(fillStation.hcrc, statusPacket.data32, (sizeof(FillingStationStatusPacket) / sizeof(uint32_t)) - sizeof(uint8_t));
