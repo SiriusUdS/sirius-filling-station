@@ -15,7 +15,9 @@ uint8_t activateStorageFlag = 0;
 
 uint16_t filteredTelemetryValues[16] = {0};
 
-uint8_t uart_rx_buffer[132] = {0};
+uint8_t uart_rx_buffer[176] = {0};
+uint8_t uartRxHalfReady = 0;
+uint8_t uartRxCpltReady = 0;
 
 static void executeInit(uint32_t timestamp_ms);
 static void executeSafe(uint32_t timestamp_ms);
@@ -133,9 +135,11 @@ void FillingStation_init(PWM* pwms, ADC12* adc, GPIO* gpios, UART* uart, Valve* 
 
 void FillingStation_tick(uint32_t timestamp_ms) {
   timeSinceLastCommand_ms = timestamp_ms - lastCommandTimestamp_ms;
-  /*if (fillStation.currentState != FILLING_STATION_STATE_ABORT && timeSinceLastCommand_ms > 60000) {
-    executeAbortCommand(HAL_GetTick());
-  }*/
+  if (timeSinceLastCommand_ms > 30000) {
+    for (;;) {
+      // Wait for watchdog to reset the system
+    }
+  }
 
   if (timeSinceLastCommand_ms > communicationRestartTimer_ms + 3000) {
     communicationRestartTimer_ms = timeSinceLastCommand_ms;
@@ -387,8 +391,8 @@ void handleDataStorage(uint32_t timestamp_ms) {
       fillStation.sdCardBuffer->sdData[1].footer.valveErrorStatus[0] = fillStation.valves[0].errorStatus.value;
       fillStation.sdCardBuffer->sdData[1].footer.valveErrorStatus[1] = fillStation.valves[1].errorStatus.value;
       fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = currentCommand.fields.header.value;
-      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = 0;
-      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[0] = 0;
+      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[1] = currentCommand.fields.value;
+      fillStation.sdCardBuffer->sdData[1].footer.currentCommand[2] = currentCommand.fields.crc;
 
       for (uint8_t i = 0; i < 32;i++) {
         fillStation.sdCardBuffer->sdData[1].footer.padding[i] = 0;
@@ -416,8 +420,8 @@ void handleDataStorage(uint32_t timestamp_ms) {
       fillStation.sdCardBuffer->sdData[0].footer.valveErrorStatus[1] = fillStation.valves[1].errorStatus.value;
       // Those are the BoardCommand
       fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = currentCommand.fields.header.value;
-      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = 0;
-      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[0] = 0;
+      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[1] = currentCommand.fields.value;
+      fillStation.sdCardBuffer->sdData[0].footer.currentCommand[2] = currentCommand.fields.crc;
 
       for (uint8_t i = 0; i < 32;i++) {
         fillStation.sdCardBuffer->sdData[0].footer.padding[i] = 0;
@@ -497,6 +501,7 @@ void handleCurrentCommandSafe() {
       break;
     case BOARD_COMMAND_CODE_UNSAFE:
       fillStation.currentState = FILLING_STATION_STATE_UNSAFE;
+      activateStorageFlag = 1;
       break;
   }
 }
@@ -530,7 +535,6 @@ void handleCurrentCommandUnsafe() {
       }
       break;
     case ENGINE_COMMAND_CODE_FIRE_IGNITER:
-      activateStorageFlag = 1;
       break;
     default:
       break;
@@ -591,7 +595,8 @@ void sendStatusPacket(uint32_t timestamp_ms) {
 }
 
 void getReceivedCommand() {
-  for (uint16_t i = 0; i < sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1; i++) {
+  for (uint16_t i = uartRxHalfReady ? 0 : sizeof(uart_rx_buffer) / 2 - sizeof(currentCommand) - 1;
+    i < uartRxHalfReady ? (sizeof(uart_rx_buffer) / 2) - sizeof(currentCommand) - 1 : sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1; i++) {
     currentCommand.data[0] = uart_rx_buffer[i];
     currentCommand.data[1] = uart_rx_buffer[i + 1];
     currentCommand.data[2] = uart_rx_buffer[i + 2];
@@ -612,6 +617,12 @@ void getReceivedCommand() {
         }
       }
     }
+  }
+  if (uartRxCpltReady) {
+    uartRxCpltReady = 0;
+  }
+  else {
+    uartRxHalfReady = 0;
   }
 }
 
@@ -652,7 +663,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART1) {
+    uartRxCpltReady = 1;
     getReceivedCommand();
-    HAL_UART_Receive_DMA(huart, uart_rx_buffer, sizeof(uart_rx_buffer));
+  }
+}
+
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart) {
+  if(huart->Instance == USART1) {
+    uartRxHalfReady = 1;
+    getReceivedCommand();
   }
 }
