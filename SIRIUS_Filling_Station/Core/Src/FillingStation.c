@@ -597,8 +597,8 @@ void sendStatusPacket(uint32_t timestamp_ms) {
 }
 
 void getReceivedCommand() {
-  uint16_t startValue = uartRxHalfReady ? 0 : sizeof(uart_rx_buffer) / 2 - sizeof(currentCommand) - 1;
-  uint16_t endValue = uartRxHalfReady ? sizeof(uart_rx_buffer) / 2 - sizeof(currentCommand) - 1 : sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1;
+  uint16_t startValue = uartRxHalfReady ? 0 : sizeof(uart_rx_buffer) / 2;
+  uint16_t endValue = uartRxHalfReady ? (sizeof(uart_rx_buffer) / 2) - sizeof(currentCommand) - 1 : sizeof(uart_rx_buffer) - sizeof(currentCommand) - 1;
   for (uint16_t i = startValue;i < endValue; i++) {
     currentCommand.data[0] = uart_rx_buffer[i];
     currentCommand.data[1] = uart_rx_buffer[i + 1];
@@ -668,6 +668,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART1) {
     uartRxCpltReady = 1;
     getReceivedCommand();
+    HAL_UART_Receive_DMA(fillStation.uart->externalHandle, uart_rx_buffer, sizeof(uart_rx_buffer) / 2);
   }
 }
 
